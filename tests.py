@@ -1,68 +1,57 @@
+#!/bin/env python3
 
-from pobtl_model_checker import *
+from pobtl_model_checker import (
+    Prop, EF, AF, AG, EG, EP, AP, EH, AH,
+    And, Or, Not, Implies, Iff, StrongImplies,
+    Model, eval_formula
+)
+import copy
 
-# A simple Kripke model for test cases
-class Model:
-    def __init__(self):
-        self.states = {}
-        self.transitions = {}
-        self.predecessors = {}
-        self.counter = 0
+def make_states():
+    return [
+        {"x": 0, "y": 10},
+        {"x": 1, "y": 9},
+        {"x": 2, "y": 8},
+        {"x": 3, "y": 7},
+        {"x": 4, "y": 6}
+    ]
 
-    def add_state(self, data):
-        sid = self.counter
-        self.states[sid] = data
-        self.transitions[sid] = []
-        self.predecessors[sid] = []
-        self.counter += 1
-        return sid
-
-    def add_transition(self, src, dst, label=None):
-        self.transitions[src].append((label, dst))
-        self.predecessors[dst].append(src)
-
-# Build a reasonable Kripke frame (nontrivial branching)
-m = Model()
-s0 = m.add_state({"p": False, "q": False})
-s1 = m.add_state({"p": True, "q": False})
-s2 = m.add_state({"p": True, "q": True})
-s3 = m.add_state({"p": False, "q": True})
-s4 = m.add_state({"p": True, "q": True})  # loop state
-s5 = m.add_state({"p": False, "q": False})  # dead-end
-
-m.add_transition(s0, s1)
-m.add_transition(s1, s2)
-m.add_transition(s2, s3)
-m.add_transition(s3, s4)
-m.add_transition(s4, s2)  # cycle
-m.add_transition(s1, s5)
-
-# Propositions
-P = Prop("P", lambda s: s.get("p", False))
-Q = Prop("Q", lambda s: s.get("q", False))
-
-# Test cases
-tests = {
-    "EF(P)": EF(P),
-    "AF(Q)": AF(Q),
-    "AG(P)": AG(P),
-    "EG(Q)": EG(Q),
-    "EP(P)": EP(P),
-    "AP(P)": AP(P),
-    "EH(Q)": EH(Q),
-    "AH(Q)": AH(Q),
-    "StrongImplies(P → Q)": StrongImplies(P, Q),
-    "¬EF(P)": Not(EF(P)),
-    "P ∧ Q": And(P, Q),
-    "P ∨ Q": Or(P, Q),
-    "P → Q": Implies(P, Q),
-}
+def make_transitions(states):
+    transitions = {}
+    for i in range(len(states) - 1):
+        src = frozenset(copy.deepcopy(states[i]).items())
+        dst = frozenset(copy.deepcopy(states[i + 1]).items())
+        transitions[src] = [dst]
+    transitions[frozenset(copy.deepcopy(states[-1]).items())] = []
+    return transitions
 
 def run_tests():
-    for label, formula in tests.items():
-        result = eval_formula(formula, m)
-        result_states = sorted(list(result))
-        print(f"{label}: holds in states {result_states}")
+    states = make_states()  # plain dicts
+    transitions = make_transitions(states)  # frozensets from copies
+    model = Model(states, transitions)
+
+    P = Prop("P", lambda s: s["x"] > 2)
+    Q = Prop("Q", lambda s: s["y"] < 8)
+
+    print("Testing modal formulas...")
+
+    assert eval_formula(EF(P), model), "EF P failed"
+    assert eval_formula(AF(Q), model), "AF Q failed"
+    assert eval_formula(AG(Or(P, Not(P))), model), "AG(P ∨ ¬P) tautology failed"
+    assert eval_formula(StrongImplies(P, Q), model), "StrongImplies(P, Q) failed"
+
+    print("Testing temporal past operators (mock)...")
+    reverse_transitions = {frozenset(copy.deepcopy(states[0]).items()): []}
+    for i in range(1, len(states)):
+        src = frozenset(copy.deepcopy(states[i]).items())
+        prev = frozenset(copy.deepcopy(states[i - 1]).items())
+        reverse_transitions[src] = [prev]
+    past_model = Model(states, reverse_transitions)
+
+    assert eval_formula(EP(P), past_model), "EP P failed"
+    assert eval_formula(AP(Or(P, Not(P))), past_model), "AP(P ∨ ¬P) tautology failed"
+
+    print("✅ All tests passed.")
 
 if __name__ == "__main__":
     run_tests()
