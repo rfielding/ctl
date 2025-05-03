@@ -7,7 +7,7 @@ def extract_and_run(filename):
         content = f.read()
 
     # Match blocks like ```pobtl ... ```
-    pobtl_blocks = re.findall(r"```pobtl\s*(.*?)```", content, re.DOTALL)
+    pobtl_blocks = re.findall(r"```pobtl\r?\n(.*?)```", content, re.DOTALL)
     print(f"🧠 Found {len(pobtl_blocks)} POBTL* code block(s). Executing...")
 
     context = {}
