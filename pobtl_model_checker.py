@@ -1,22 +1,51 @@
 # pobtl_model_checker.py
 # Multi-modal branching-time temporal logic evaluator (POBTL*)
 
-class Formula: pass
+class Formula:
+	pass
 
-class Prop(Formula):       def __init__(self, name, func): self.name, self.func = name, func
-class Not(Formula):        def __init__(self, sub): self.sub = sub
-class And(Formula):        def __init__(self, a, b): self.a, self.b = a, b
-class Or(Formula):         def __init__(self, a, b): self.a, self.b = a, b
-class Implies(Formula):    def __init__(self, a, b): self.a, self.b = a, b
-class StrongImplies(Formula): def __init__(self, a, b): self.a, self.b = a, b
-class EF(Formula):         def __init__(self, sub): self.sub = sub
-class AF(Formula):         def __init__(self, sub): self.sub = sub
-class EG(Formula):         def __init__(self, sub): self.sub = sub
-class AG(Formula):         def __init__(self, sub): self.sub = sub
-class EP(Formula):         def __init__(self, sub): self.sub = sub
-class AP(Formula):         def __init__(self, sub): self.sub = sub
-class EH(Formula):         def __init__(self, sub): self.sub = sub
-class AH(Formula):         def __init__(self, sub): self.sub = sub
+class Prop(Formula):
+	def __init__(self, name, func):
+		self.name, self.func = name, func
+class Not(Formula):
+	def __init__(self, sub):
+		self.sub = sub
+class And(Formula):
+	def __init__(self, a, b):
+		self.a, self.b = a, b
+class Or(Formula):
+	def __init__(self, a, b):
+		self.a, self.b = a, b
+class Implies(Formula):
+	def __init__(self, a, b):
+		self.a, self.b = a, b
+class StrongImplies(Formula):
+	def __init__(self, a, b):
+		self.a, self.b = a, b
+class EF(Formula):
+	def __init__(self, sub):
+		self.sub = sub
+class AF(Formula):
+	def __init__(self, sub):
+		self.sub = sub
+class EG(Formula):
+	def __init__(self, sub):
+		self.sub = sub
+class AG(Formula):
+	def __init__(self, sub):
+		self.sub = sub
+class EP(Formula):
+	def __init__(self, sub):
+		self.sub = sub
+class AP(Formula):
+	def __init__(self, sub):
+		self.sub = sub
+class EH(Formula):
+	def __init__(self, sub):
+		self.sub = sub
+class AH(Formula):
+	def __init__(self, sub):
+		self.sub = sub
 
 def eval_EG(formula, model):
     sat = eval_formula(formula.sub, model)
