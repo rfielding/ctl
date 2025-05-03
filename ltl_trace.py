@@ -1,7 +1,8 @@
 
 # ltl_trace.py
 
-class Formula: pass
+class Formula:
+    pass
 
 class Prop(Formula):
     def __init__(self, name, func): self.name, self.func = name, func
