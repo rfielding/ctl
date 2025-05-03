@@ -70,3 +70,91 @@ result_states = eval_formula(formula, model)
 
 - `pobtl_model_checker.py`: The logic engine
 - `tests.py`: Runs propositional and modal logic assertions
+
+
+---
+
+## 🔧 Running with `uv` and Managing Permissions
+
+We recommend using [`uv`](https://github.com/astral-sh/uv) for installing dependencies efficiently:
+
+```bash
+uv pip install -r requirements.txt
+```
+
+This will ensure all Python packages are installed in your environment using `uv`, which is fast and compatible with Python 3.12.7.
+
+### 🔒 Permissions Note
+
+If you're running on a Unix-based system and you downloaded these scripts via browser or extracted them from a zip archive, they may not be executable by default.
+
+You can fix permissions like this:
+
+```bash
+chmod +x chatbot_requirements_logger.py
+```
+
+Or run directly with:
+
+```bash
+python3 chatbot_requirements_logger.py
+```
+
+Make sure your environment has:
+
+- `OPENAI_API_KEY` set:  
+  ```bash
+  export OPENAI_API_KEY=sk-...
+  ```
+
+- Optional: set your active project  
+  ```bash
+  export PROJECT=myproject
+  ```
+
+Then you're ready to go.
+
+---
+
+---
+
+## 🧠 POBTL* Syntax Quick Reference
+
+This section shows how to write modal logic formulas in valid Python using the `pobtl_model_checker.py` module.
+
+### 🧩 Define Propositions
+
+Use `Prop(name, lambda state: condition)` to define atomic logic:
+
+```python
+from pobtl_model_checker import Prop, EF, eval_formula
+
+# Proposition: queue is full
+q = Prop("q", lambda s: s["Queue"] == 5)
+```
+
+### ⏳ Use Modal Operators
+
+All operators like `EF`, `AF`, `AG`, `EG`, `AP`, `EP`, `AH`, `EH`, `StrongImplies`, etc. are Python classes that operate on `Prop` or logical expressions.
+
+```python
+check_first_drop = EF(q)
+```
+
+### ✅ Evaluate Against States
+
+To compute which states satisfy a formula:
+
+```python
+states = all_possible_states()  # You must define this
+result_states = eval_formula(check_first_drop, states)
+probability = len(result_states) / len(states)
+```
+
+### ❗ Requirements
+
+- All POBTL* formulas are just Python objects.
+- You must provide a list of state dictionaries: `[{"Queue": 0}, {"Queue": 1}, ..., {"Queue": 5}]`
+- Do **not** invent new DSLs or use symbolic variables — use Python.
+
+---
