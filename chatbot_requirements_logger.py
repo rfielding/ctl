@@ -30,7 +30,7 @@ def log_pobtl_translation(english, logic):
 
 def load_readme_context():
     try:
-        with open("README.md", "r") as f:
+        with open("pobtl_model_checker.py", "r") as f:
             return f.read()
     except FileNotFoundError:
         return "# POBTL* README not found."
