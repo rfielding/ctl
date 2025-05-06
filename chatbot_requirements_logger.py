@@ -29,11 +29,18 @@ def log_pobtl_translation(english, logic):
         f.write(f"```pobtl\n{logic}\n```\n")
 
 def load_readme_context():
+    fullData = None
     try:
         with open("pobtl_model_checker.py", "r") as f:
-            return f.read()
+            fullData =  f.read()
     except FileNotFoundError:
         return "# POBTL* README not found."
+    try:
+        with open("tests.py", "r") as f:
+            fullData +=  f.read()
+    except FileNotFoundError:
+        return "# POBTL* README not found."
+    return fullData
 
 tools = [{
     "type": "function",
