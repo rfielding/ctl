@@ -1,6 +1,7 @@
 #!/bin/env python3
 from pobtl_model_checker import Model, Prop, EF, AG, StrongImplies, eval_formula
 import numpy as np
+from dataclasses import dataclass
 
 # Define queue states 0 to 5
 states = [{"Queue": i} for i in range(6)]
@@ -21,36 +22,31 @@ for s in states:
     possible_transitions = []
     state_probabilities = {}
     
-    # Handle boundary cases
-    if current_queue == 0:
-        # At queue=0, can only stay or have arrival
-        state_probabilities[current_state] = STAY + MU  # Absorb MU into STAY since queue empty
+    # Always include staying in same state as a possibility
+    possible_transitions.append(current_state)
+    state_probabilities[current_state] = STAY
+    
+    # Add possible next states based on queue position
+    if current_queue < 5:  # Can add to queue if not full
         next_state = frozenset({"Queue": current_queue + 1}.items())
+        possible_transitions.append(next_state)
         state_probabilities[next_state] = LAMBDA
-    elif current_queue == 5:
-        # At queue=5, can only stay or have departure
-        # LAMBDA probability represents drops when queue is full
-        state_probabilities[current_state] = STAY
+    
+    if current_queue > 0:  # Can remove from queue if not empty
         prev_state = frozenset({"Queue": current_queue - 1}.items())
-        state_probabilities[prev_state] = MU
-        drops = LAMBDA  # Track drop probability when queue full
-    else:
-        # Normal case: can stay, arrive, or depart
-        state_probabilities[current_state] = STAY
-        next_state = frozenset({"Queue": current_queue + 1}.items())
-        state_probabilities[next_state] = LAMBDA
-        prev_state = frozenset({"Queue": current_queue - 1}.items())
+        possible_transitions.append(prev_state)
         state_probabilities[prev_state] = MU
     
-    possible_transitions = list(state_probabilities.keys())
+    # For LTL checking, we need all possible transitions regardless of probability
     transitions[current_state] = possible_transitions
+    # Keep probabilities separate for Markov chain analysis
     probabilities[current_state] = state_probabilities
 
-# Build the model
+# Build the model for LTL checking
 model = Model(states, transitions)
-model.probabilities = probabilities
+model.probabilities = probabilities  # Store probabilities but don't use for LTL
 
-# Create transition probability matrix P
+# Create transition probability matrix P for Markov analysis
 n_states = len(states)
 P = np.zeros((n_states, n_states))
 
@@ -92,17 +88,108 @@ print(f"Sum of probabilities: {sum(steady_state):.4f}")
 
 # Calculate average queue length and drop probability
 avg_queue = sum(i * prob for i, prob in enumerate(steady_state))
-drop_rate = drops * steady_state[-1]  # Probability of being in state 5 * lambda
+drop_rate = LAMBDA * steady_state[-1]  # Probability of being in state 5 * lambda
 
 print(f"\nAverage Queue Length: {avg_queue:.4f}")
 print(f"Drop Probability: {drop_rate:.4f}")
 
-# Propositions
+# CTL Properties and Checking
+print("\nChecking CTL Properties:")
+
+# Basic state properties
 q5 = Prop("Queue==5", lambda s: s["Queue"] == 5)
 q4 = Prop("Queue==4", lambda s: s["Queue"] == 4)
+q0 = Prop("Queue==0", lambda s: s["Queue"] == 0)
 
-# Strong implication: possibly queue reaches 4, and if so, then eventually reaches 5
-formula = StrongImplies(q4, q5)
+# Check CTL properties (with path quantifiers E and A)
+ctl_props = [
+    ("EF(Queue==5)", EF(q5)),  # Exists path where eventually queue is full
+    ("EF(Queue==0)", EF(q0)),  # Exists path where eventually queue is empty
+    ("AG(Queue==4 → EF(Queue==5))", AG(StrongImplies(q4, q5))),  # All paths: from 4 can reach 5
+]
 
-matching = eval_formula(formula, model)
-print("\n✅ StrongImplies(Queue==4 → Queue==5):", matching)
+print("\nCTL Properties:")
+for desc, formula in ctl_props:
+    matching = eval_formula(formula, model)
+    print(f"✅ {desc}: {matching}")
+
+# LTL properties would look like (if we had LTL support):
+# F(Queue==5)      - Eventually queue is full
+# G(Queue<5)       - Always queue is not full
+# G(Queue==5 → F(Queue==4))  - Always: if full, eventually decreases
+# F G(Queue<5)     - Eventually always not full
+
+# Add LTL operators
+@dataclass
+class F:  # Finally (Eventually)
+    f: any
+    def eval(self, model, path):
+        if isinstance(path, dict) or isinstance(path, frozenset):
+            # Base case: evaluating a state property
+            state = dict(path) if isinstance(path, frozenset) else path
+            return self.f.eval(model, state)
+        # Path case: check if property holds eventually in some suffix
+        for i in range(len(path)):
+            if self.eval(model, path[i]):  # Recursively evaluate on state
+                return True
+        return False
+
+@dataclass
+class G:  # Globally (Always)
+    f: any
+    def eval(self, model, path):
+        if isinstance(path, dict) or isinstance(path, frozenset):
+            # Base case: evaluating a state property
+            state = dict(path) if isinstance(path, frozenset) else path
+            return self.f.eval(model, state)
+        # Path case: check if property holds for all states
+        for i in range(len(path)):
+            if not self.eval(model, path[i]):  # Recursively evaluate on state
+                return False
+        return True
+
+@dataclass
+class X:  # Next
+    f: any
+    def eval(self, model, path):
+        if isinstance(path, dict) or isinstance(path, frozenset):
+            return False  # Can't evaluate Next on a single state
+        if len(path) < 2:
+            return False
+        return self.eval(model, path[1])  # Evaluate on next state
+
+# Function to find paths in model
+def get_paths(model, max_length=10):
+    paths = []
+    for state in model.states:
+        path = [frozenset(state.items())]  # Start with frozenset
+        paths.extend(extend_path(model, path, max_length))
+    return paths
+
+def extend_path(model, path, max_length):
+    if len(path) >= max_length:
+        return [path]
+    paths = []
+    current = path[-1]
+    for next_state in model.transitions[current]:  # current is already frozenset
+        new_path = path + [next_state]  # Keep as frozenset
+        paths.extend(extend_path(model, new_path, max_length))
+    return paths
+
+# Function to check LTL formula on a path
+def check_ltl_path(formula, model, path):
+    return formula.eval(model, path)
+
+# Example LTL properties
+ltl_props = [
+    ("F(Queue==5)", F(q5)),  # Eventually queue is full
+    ("G(Queue<5)", G(Prop("Queue<5", lambda s: s["Queue"] < 5))),  # Always not full
+    ("G(F(Queue==0))", G(F(q0))),  # Always eventually empty
+]
+
+print("\nLTL Properties:")
+paths = get_paths(model)
+for desc, formula in ltl_props:
+    # Check formula on all paths
+    satisfied = any(check_ltl_path(formula, model, path) for path in paths)
+    print(f"✅ {desc}: {satisfied}")

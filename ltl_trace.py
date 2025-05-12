@@ -1,4 +1,5 @@
 
+#!/usr/bin/env python3
 # ltl_trace.py
 
 class Formula:
