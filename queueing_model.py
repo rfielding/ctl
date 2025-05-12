@@ -128,9 +128,14 @@ class F:  # Finally (Eventually)
             # Base case: evaluating a state property
             state = dict(path) if isinstance(path, frozenset) else path
             return self.f.eval(model, state)
-        # Path case: check if property holds eventually in some suffix
+        # Check each suffix of the path
         for i in range(len(path)):
-            if self.eval(model, path[i]):  # Recursively evaluate on state
+            suffix = path[i:]
+            if isinstance(suffix[0], frozenset):
+                state = dict(suffix[0])
+            else:
+                state = suffix[0]
+            if self.f.eval(model, state):
                 return True
         return False
 
@@ -142,9 +147,11 @@ class G:  # Globally (Always)
             # Base case: evaluating a state property
             state = dict(path) if isinstance(path, frozenset) else path
             return self.f.eval(model, state)
-        # Path case: check if property holds for all states
-        for i in range(len(path)):
-            if not self.eval(model, path[i]):  # Recursively evaluate on state
+        # Check all states in path
+        for state in path:
+            if isinstance(state, frozenset):
+                state = dict(state)
+            if not self.f.eval(model, state):
                 return False
         return True
 
@@ -180,16 +187,52 @@ def extend_path(model, path, max_length):
 def check_ltl_path(formula, model, path):
     return formula.eval(model, path)
 
-# Example LTL properties
+# LTL properties with explicit quantification
 ltl_props = [
-    ("F(Queue==5)", F(q5)),  # Eventually queue is full
-    ("G(Queue<5)", G(Prop("Queue<5", lambda s: s["Queue"] < 5))),  # Always not full
-    ("G(F(Queue==0))", G(F(q0))),  # Always eventually empty
+    # Existence properties (some path)
+    ("EXISTS F(Queue==5)", F(q5), any, "Some path reaches Queue=5"),
+    ("EXISTS F(Queue==0)", F(q0), any, "Some path reaches Queue=0"),
+    ("EXISTS G(Queue<5)", G(Prop("Queue<5", lambda s: s["Queue"] < 5)), any, "Some path stays below 5"),
+    
+    # Universal properties (all paths)
+    ("FORALL F(Queue==5)", F(q5), all, "All paths reach Queue=5"),
+    ("FORALL F(Queue==0)", F(q0), all, "All paths reach Queue=0"),
+    ("FORALL G(Queue>=0)", G(Prop("Queue>=0", lambda s: s["Queue"] >= 0)), all, "Queue never goes negative"),
+    
+    # Mixed properties
+    ("EXISTS F(G(Queue<5))", F(G(Prop("Queue<5", lambda s: s["Queue"] < 5))), any, "Some path eventually stays below 5"),
+    ("EXISTS G(F(Queue==0))", G(F(q0)), any, "Some path keeps reaching 0"),
 ]
 
-print("\nLTL Properties:")
-paths = get_paths(model)
-for desc, formula in ltl_props:
-    # Check formula on all paths
-    satisfied = any(check_ltl_path(formula, model, path) for path in paths)
-    print(f"✅ {desc}: {satisfied}")
+print("\nComparing Different Types of Properties:")
+print("\nSteady State Probabilities (Markov Analysis):")
+for i, prob in enumerate(steady_state):
+    print(f"P(Queue={i}) = {prob:.4f}")
+print(f"Average Queue Length: {avg_queue:.4f}")
+print(f"Drop Probability: {drop_rate:.4f}")
+
+print("\nCTL Properties (Branching Time):")
+for desc, formula in ctl_props:
+    matching = eval_formula(formula, model)
+    print(f"✅ {desc}: {matching}")
+
+print("\nLTL Properties (Linear Time):")
+paths = get_paths(model, max_length=12)  # Slightly longer paths
+for desc, formula, quantifier, explanation in ltl_props:
+    satisfied = quantifier(check_ltl_path(formula, model, path) for path in paths)
+    print(f"\n✅ {desc}: {satisfied}")
+    print(f"   Explanation: {explanation}")
+    if quantifier == any and satisfied:
+        # Find and show an example path that satisfies the property
+        for path in paths:
+            if check_ltl_path(formula, model, path):
+                path_str = " -> ".join(f"Q={dict(s)['Queue']}" for s in path[:5])
+                print(f"   Example path: {path_str}...")
+                break
+
+print("\nKey Insights:")
+print("1. P(Queue=5) > 0 means the state is reachable (EXISTS F(Queue==5) is true)")
+print("2. But FORALL F(Queue==5) is false because some paths never reach Queue=5")
+print("3. The steady state distribution tells us long-term probabilities")
+print("4. CTL's EF(Queue==5) matches EXISTS F(Queue==5) from LTL")
+print("5. The queue is stable (bounded, non-negative) but not deterministic")
