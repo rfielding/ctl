@@ -3,6 +3,7 @@
 # POBTL* Model Checker Core
 
 from typing import Any, Callable, Dict, List, Union
+from dataclasses import dataclass
 
 # === Formula Base ===
 
@@ -157,3 +158,113 @@ def eval_formula(formula: Formula, model_or_states: Union[Model, List[Dict]]) ->
         raise ValueError("Must wrap state list in a Model before evaluating.")
     model = model_or_states
     return [s for s in model.states if formula.eval(model, s)]
+
+@dataclass 
+class Y:  # Yesterday/Previous
+    f: Any
+    def eval(self, model, state):
+        # Find all states that could transition to current
+        current = frozenset(state.items()) if isinstance(state, dict) else state
+        possible_pasts = set()
+        for s in model.states:
+            s_frozen = frozenset(s.items())
+            if current in model.transitions[s_frozen]:
+                possible_pasts.add(s_frozen)
+        return any(self.f.eval(model, dict(s)) for s in possible_pasts)
+
+@dataclass
+class O:  # Once (in the past)
+    f: Any
+    def eval(self, model, state):
+        visited = set()
+        def check_past(s):
+            s_frozen = frozenset(s.items()) if isinstance(s, dict) else s
+            if s_frozen in visited:
+                return False
+            visited.add(s_frozen)
+            if self.f.eval(model, dict(s_frozen)):
+                return True
+            # Check all possible previous states
+            for prev_s in model.states:
+                prev_frozen = frozenset(prev_s.items())
+                if s_frozen in model.transitions[prev_frozen]:
+                    if check_past(prev_s):
+                        return True
+            return False
+        return check_past(state)
+
+@dataclass
+class H:  # Historically (always in the past)
+    f: Any
+    def eval(self, model, state):
+        visited = set()
+        def check_past(s):
+            # Convert state to frozen set for consistent handling
+            s_frozen = frozenset(s.items()) if isinstance(s, dict) else s
+            
+            # If we've seen this state before in our traversal:
+            # Return True because we've already verified this path
+            # (and we want to handle cycles gracefully)
+            if s_frozen in visited:
+                return True
+            
+            # Mark this state as visited to handle cycles
+            visited.add(s_frozen)
+            
+            # FIRST: Check if property holds in current state
+            # If it doesn't, we can fail fast - history is violated
+            current_state = dict(s_frozen)
+            if not self.f.eval(model, current_state):
+                return False
+            
+            # SECOND: Find all states that could lead to current state
+            # by checking which states have transitions to us
+            predecessor_states = []
+            for prev_s in model.states:
+                prev_frozen = frozenset(prev_s.items())
+                if s_frozen in model.transitions[prev_frozen]:
+                    predecessor_states.append(prev_frozen)
+            
+            # THIRD: Handle different cases:
+            
+            # Case 1: No predecessors (we're at an initial state)
+            # If we got here, current state satisfies f, and that's all we need
+            if not predecessor_states:
+                return True
+            
+            # Case 2: Has predecessors
+            # Property must hold in ALL predecessor paths
+            for prev_state in predecessor_states:
+                if not check_past(prev_state):
+                    return False
+            
+            # If we get here, property held in current state
+            # and recursively in all possible past paths
+            return True
+            
+        # Start checking from the given state
+        return check_past(state)
+
+@dataclass
+class S:  # Since
+    f1: Any  # First formula
+    f2: Any  # Second formula
+    def eval(self, model, state):
+        visited = set()
+        def check_since(s):
+            s_frozen = frozenset(s.items()) if isinstance(s, dict) else s
+            if s_frozen in visited:
+                return False
+            visited.add(s_frozen)
+            # f2 holds now
+            if self.f2.eval(model, dict(s_frozen)):
+                return True
+            # f1 holds now and since holds in some previous state
+            if self.f1.eval(model, dict(s_frozen)):
+                for prev_s in model.states:
+                    prev_frozen = frozenset(prev_s.items())
+                    if s_frozen in model.transitions[prev_frozen]:
+                        if check_since(prev_s):
+                            return True
+            return False
+        return check_since(state)

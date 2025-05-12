@@ -1,4 +1,3 @@
-
 # LTL + Past-LTL Formula Examples
 
 ## Trace
@@ -55,3 +54,30 @@ from ltl_trace import *
 result = eval_ltl(F(charged), trace)
 print("F(charged) =", result)
 ```
+
+# Past Operator Examples
+
+1. Y(Queue==4)
+   - "Previous state could have been Queue=4"
+   - Useful for checking immediate history
+
+2. O(Queue==5)
+   - "At some point in the past, Queue was 5"
+   - Useful for checking if system ever reached capacity
+
+3. H(Queue>=0)
+   - "Queue has always been non-negative"
+   - Safety property over history
+
+4. msg S ack
+   - "Message received since last acknowledgement"
+   - Protocol verification
+
+5. Combined Past/Future:
+   G(ack → O(msg))
+   - "Every ack is preceded by a message"
+   - Protocol ordering
+
+6. F(done ∧ H(valid))
+   - "Eventually done, and path there was always valid"
+   - Path validation
