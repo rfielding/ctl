@@ -58,10 +58,18 @@ class RequirementsParser:
         # Create/reuse propositions based on description
         key = desc.lower().strip()
         if key not in self.props:
-            # Example: "queue is empty" -> check Queue == 0
-            if "empty" in key:
-                self.props[key] = Prop(key, lambda s: s.get("Queue", 0) == 0)
-            # Add more state patterns here
+            # Handle different state descriptions
+            if "waiting" in key:
+                self.props[key] = Prop(key, lambda s: s.get("state") == "waiting_for_input")
+            elif "processing" in key:
+                self.props[key] = Prop(key, lambda s: s.get("state") == "processing")
+            elif "responding" in key:
+                self.props[key] = Prop(key, lambda s: s.get("state") == "responding")
+            elif "error" in key:
+                self.props[key] = Prop(key, lambda s: s.get("state") == "error")
+            else:
+                # Default proposition
+                self.props[key] = Prop(key, lambda s: True)
             
         return self.props.get(key, Prop(key, lambda s: True))
 
@@ -79,24 +87,54 @@ if __name__ == "__main__":
     # Get filename from command line argument, default to "REQUIREMENTS.md" if not provided
     filename = sys.argv[1] if len(sys.argv) > 1 else "REQUIREMENTS.md"
     
+    print(f"Parsing requirements from: {filename}")
     parser = RequirementsParser()
     reqs = parser.parse_file(filename)
     
-    # Create model (example)
-    states = [{"Queue": i} for i in range(4)]
+    if not reqs:
+        print(f"No requirements found in {filename}")
+        sys.exit(1)
+    
+    print(f"\nFound {len(reqs)} requirements:")
+    for req in reqs:
+        print(f"REQ-{req.id}: {req.description}")
+    
+    # Create a more general state machine model
+    # Example states for a system with multiple variables
+    states = [
+        {"state": "initial"},
+        {"state": "waiting_for_input"},
+        {"state": "processing"},
+        {"state": "responding"},
+        {"state": "error"}
+    ]
+    
+    # Define possible transitions between states
     transitions = {}
-    for i in range(4):
-        current = frozenset({"Queue": i}.items())
-        targets = [current]  # Can stay
-        if i > 0:
-            targets.append(frozenset({"Queue": i-1}.items()))
-        if i < 3:
-            targets.append(frozenset({"Queue": i+1}.items()))
-        transitions[current] = targets
+    for state in states:
+        current = frozenset(state.items())
+        transitions[current] = []
+        
+        # Add transitions based on system logic
+        if state["state"] == "initial":
+            transitions[current].append(frozenset({"state": "waiting_for_input"}.items()))
+        elif state["state"] == "waiting_for_input":
+            transitions[current].append(frozenset({"state": "processing"}.items()))
+        elif state["state"] == "processing":
+            transitions[current].append(frozenset({"state": "responding"}.items()))
+            transitions[current].append(frozenset({"state": "error"}.items()))
+        elif state["state"] == "responding":
+            transitions[current].append(frozenset({"state": "waiting_for_input"}.items()))
+        elif state["state"] == "error":
+            transitions[current].append(frozenset({"state": "waiting_for_input"}.items()))
+        
+        # Allow staying in current state
+        transitions[current].append(current)
     
     model = Model(states, transitions)
     
     # Verify requirements
+    print("\nVerifying requirements against model:")
     results = verify_requirements(model, reqs)
     
     # Print results
