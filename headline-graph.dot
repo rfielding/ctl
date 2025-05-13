@@ -1,0 +1,12 @@
+digraph {
+   // Define nodes with labels
+   "0000" [label="Trump_orders=False\nSaudi_Prince_Behest=False\nTrump_meeting_Sharaa=False\nUS_policy_shift=False"];
+   "1000" [label="Trump_orders=True\nSaudi_Prince_Behest=False\nTrump_meeting_Sharaa=False\nUS_policy_shift=False"];
+   "1100" [label="Trump_orders=True\nSaudi_Prince_Behest=True\nTrump_meeting_Sharaa=False\nUS_policy_shift=True"];
+   "1101" [label="Trump_orders=True\nSaudi_Prince_Behest=True\nTrump_meeting_Sharaa=True\nUS_policy_shift=True"];
+
+   // Define edges for transitions
+   "0000" -> "1000" [label="Trump orders"];
+   "1000" -> "1100" [label="Order is at the behest of the Saudi Prince"];
+   "1100" -> "1101" [label="Expected meeting"];
+}

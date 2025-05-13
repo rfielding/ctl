@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import re
 from pobtl_model_checker import *
 import sys
+import graphviz
+import random
 
 @dataclass
 class Requirement:
@@ -82,60 +84,129 @@ def verify_requirements(model: Model, requirements: List[Requirement]) -> Dict[s
         results[req.id] = satisfied
     return results
 
-# Example usage:
+class MarkovState:
+    def __init__(self, name: str, precondition: str = "true"):
+        self.name = name
+        self.precondition = precondition
+        self.transitions: Dict[str, Tuple[float, Dict[str, str]]] = {}  # target_state -> (probability, updates)
+
+    def add_transition(self, target: str, probability: float = 1.0, updates: Dict[str, str] = None):
+        """Add transition with probability and variable updates"""
+        if updates is None:
+            updates = {}
+        self.transitions[target] = (probability, updates)
+
+    def normalize_probabilities(self):
+        """Ensure probabilities sum to 1.0"""
+        total = sum(prob for prob, _ in self.transitions.values())
+        if total == 0:
+            return
+        for target in self.transitions:
+            prob, updates = self.transitions[target]
+            self.transitions[target] = (prob / total, updates)
+
+class MarkovModel:
+    def __init__(self, name: str):
+        self.name = name
+        self.states: Dict[str, MarkovState] = {}
+        
+    def add_state(self, name: str, precondition: str = "true") -> MarkovState:
+        state = MarkovState(name, precondition)
+        self.states[name] = state
+        return state
+    
+    def generate_dot(self, filename: str):
+        """Generate DOT file and PNG visualization"""
+        dot = graphviz.Digraph(comment=f'State Machine for {self.name}')
+        dot.attr(rankdir='LR')
+        
+        # Add states
+        for state_name, state in self.states.items():
+            label = f"{state_name}\n[{state.precondition}]"
+            dot.node(state_name, label)
+        
+        # Add transitions
+        for state_name, state in self.states.items():
+            for target, (prob, updates) in state.transitions.items():
+                label = f"{prob:.2f}"
+                if updates:
+                    label += "\n" + "\n".join(f"{k}:={v}" for k, v in updates.items())
+                dot.edge(state_name, target, label)
+        
+        # Save both .dot and .png files
+        dot_file = f"{filename}.dot"
+        png_file = f"{filename}.png"
+        dot.save(dot_file)
+        dot.render(filename, format='png', cleanup=True)
+        print(f"Generated {dot_file} and {png_file}")
+
 if __name__ == "__main__":
-    # Get filename from command line argument, default to "REQUIREMENTS.md" if not provided
     filename = sys.argv[1] if len(sys.argv) > 1 else "REQUIREMENTS.md"
+    project_name = filename.split('-')[0] if '-' in filename else filename.split('.')[0]
     
     print(f"Parsing requirements from: {filename}")
     parser = RequirementsParser()
     reqs = parser.parse_file(filename)
     
-    if not reqs:
-        print(f"No requirements found in {filename}")
-        sys.exit(1)
+    # Create Markov chain model
+    model = MarkovModel(project_name)
     
-    print(f"\nFound {len(reqs)} requirements:")
-    for req in reqs:
-        print(f"REQ-{req.id}: {req.description}")
+    # Add states with preconditions
+    initial = model.add_state("initial", "system.started == true")
+    waiting = model.add_state("waiting_for_input", "input.available == false")
+    processing = model.add_state("processing", "input.available == true")
+    responding = model.add_state("responding", "processing.complete == true")
+    error = model.add_state("error", "error.occurred == true")
     
-    # Create a more general state machine model
-    # Example states for a system with multiple variables
-    states = [
-        {"state": "initial"},
-        {"state": "waiting_for_input"},
-        {"state": "processing"},
-        {"state": "responding"},
-        {"state": "error"}
-    ]
+    # Add transitions with probabilities and variable updates
+    initial.add_transition("waiting_for_input", 1.0, {"system.ready": "true"})
     
-    # Define possible transitions between states
+    waiting.add_transition("processing", 0.7, {"input.processing": "true"})
+    waiting.add_transition("waiting_for_input", 0.3)  # Stay in state
+    
+    processing.add_transition("responding", 0.8, {"processing.complete": "true"})
+    processing.add_transition("error", 0.1, {"error.occurred": "true"})
+    processing.add_transition("processing", 0.1)  # Stay in state
+    
+    responding.add_transition("waiting_for_input", 0.9, {
+        "input.available": "false",
+        "processing.complete": "false"
+    })
+    responding.add_transition("error", 0.1, {"error.occurred": "true"})
+    
+    error.add_transition("waiting_for_input", 0.8, {
+        "error.occurred": "false",
+        "system.ready": "true"
+    })
+    error.add_transition("error", 0.2)  # Stay in error state
+    
+    # Normalize all probabilities
+    for state in model.states.values():
+        state.normalize_probabilities()
+    
+    # Generate visualization
+    model.generate_dot(f"{project_name}-graph")
+    
+    # Create Model for verification (convert MarkovModel to verification Model)
+    states = []
     transitions = {}
-    for state in states:
-        current = frozenset(state.items())
+    
+    for state_name, state in model.states.items():
+        state_dict = {"state": state_name}
+        states.append(state_dict)
+        current = frozenset(state_dict.items())
         transitions[current] = []
         
-        # Add transitions based on system logic
-        if state["state"] == "initial":
-            transitions[current].append(frozenset({"state": "waiting_for_input"}.items()))
-        elif state["state"] == "waiting_for_input":
-            transitions[current].append(frozenset({"state": "processing"}.items()))
-        elif state["state"] == "processing":
-            transitions[current].append(frozenset({"state": "responding"}.items()))
-            transitions[current].append(frozenset({"state": "error"}.items()))
-        elif state["state"] == "responding":
-            transitions[current].append(frozenset({"state": "waiting_for_input"}.items()))
-        elif state["state"] == "error":
-            transitions[current].append(frozenset({"state": "waiting_for_input"}.items()))
-        
-        # Allow staying in current state
-        transitions[current].append(current)
+        for target, (prob, _) in state.transitions.items():
+            if prob > 0:
+                target_dict = {"state": target}
+                transitions[current].append(frozenset(target_dict.items()))
     
-    model = Model(states, transitions)
+    verification_model = Model(states, transitions)
     
     # Verify requirements
     print("\nVerifying requirements against model:")
-    results = verify_requirements(model, reqs)
+    results = verify_requirements(verification_model, reqs)
     
     # Print results
     for req_id, satisfied in results.items():

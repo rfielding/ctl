@@ -1,3 +1,4 @@
 # we use python 3.12.7
 # Core packages
 openai>=1.0.0
+graphviz>=0.20.1
