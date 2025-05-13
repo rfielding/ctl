@@ -6,82 +6,246 @@ from pobtl_model_checker import *
 import sys
 import graphviz
 import random
+import os
+
+def markdown_to_python(md_content: str) -> str:
+    """Convert markdown file to executable Python"""
+    python_code = [
+        "#!/usr/bin/env python3",
+        "# This file is both markdown and executable Python",
+        "# Generated from requirements parser",
+        "",
+        "import graphviz",
+        "from dataclasses import dataclass",
+        "from typing import Dict, List, Tuple, Any",
+        "",
+        "# Initialize documentation string",
+        "DOC = []",
+        "",
+    ]
+
+    # Split content into lines
+    lines = md_content.split('\n')
+    in_python_block = False
+    in_temporal_block = False
+    
+    for line in lines:
+        if line.startswith('```python'):
+            in_python_block = True
+            python_code.append("# Begin state machine definition")
+            continue
+        elif line.startswith('```temporal_logic'):
+            in_temporal_block = True
+            python_code.append("# Begin temporal logic")
+            python_code.append("TEMPORAL_LOGIC = [")
+            continue
+        elif line.startswith('```'):
+            if in_python_block:
+                in_python_block = False
+                python_code.append("# End state machine definition")
+                python_code.append("")
+                # Add code to generate diagram
+                python_code.append("if 'model' in locals():")
+                python_code.append("    model.generate_dot(project_name + '-graph')")
+                python_code.append("")
+            elif in_temporal_block:
+                in_temporal_block = False
+                python_code.append("]")
+                python_code.append("")
+            continue
+        
+        if in_python_block:
+            python_code.append(line)
+        elif in_temporal_block:
+            if line.strip():
+                python_code.append(f"    {repr(line)},")
+        else:
+            python_code.append(f"DOC.append({repr(line)})")
+    
+    # Add main block
+    python_code.extend([
+        "",
+        "if __name__ == '__main__':",
+        "    # Print documentation if --doc flag is provided",
+        "    if '--doc' in sys.argv:",
+        "        print('\\n'.join(DOC))",
+        "    # Print temporal logic if --temporal flag is provided",
+        "    elif '--temporal' in sys.argv:",
+        "        print('Temporal Logic Statements:')",
+        "        for stmt in TEMPORAL_LOGIC:",
+        "        print(f'  {stmt}')",
+        "    # Otherwise, show that the model was generated",
+        "    else:",
+        "        print(f'Generated state machine diagram: {project_name}-graph.png')",
+    ])
+    
+    return '\n'.join(python_code)
 
 @dataclass
 class Requirement:
     id: str
     description: str
-    formula: Formula
+    formula: Any  # This will hold our temporal logic formulas
+
+@dataclass
+class Conversation:
+    project_name: str
+    state_machine_code: str
+    temporal_logic_blocks: List[str]
+    full_content: str
+    requirements: List[Requirement]
 
 class RequirementsParser:
     def __init__(self):
+        self.project_name = ""
         self.requirements: List[Requirement] = []
-        self.props: Dict[str, Prop] = {}
         
-    def parse_file(self, filename: str) -> List[Requirement]:
-        """Parse requirements from a markdown file"""
+    def parse_file(self, filename: str) -> Conversation:
+        """Parse a markdown conversation file"""
+        print(f"Reading file: {filename}")
         with open(filename, 'r') as f:
             content = f.read()
             
-        # Find requirement blocks
-        req_pattern = r'### REQ-(\w+)\s*\n(.*?)\n(?=###|\Z)'
-        matches = re.finditer(req_pattern, content, re.DOTALL)
+        # Extract project name
+        project_match = re.search(r'Set project to (.*?)\n', content)
+        if project_match:
+            self.project_name = project_match.group(1).strip()
+            print(f"Project name: {self.project_name}")
         
-        for match in matches:
-            req_id = match.group(1)
-            description = match.group(2).strip()
-            formula = self._description_to_formula(description)
-            self.requirements.append(Requirement(req_id, description, formula))
+        # Find the first Python code block (state machine)
+        state_machine_match = re.search(r'```python\n(.*?)```', content, re.DOTALL)
+        state_machine_code = state_machine_match.group(1) if state_machine_match else ""
+        
+        if not state_machine_code:
+            print("Warning: No state machine code found!")
+            return None
             
-        return self.requirements
+        # Find all subsequent Python blocks (temporal logic)
+        # Start search after the state machine block
+        start_pos = state_machine_match.end()
+        temporal_blocks = re.findall(r'```python\n(.*?)```', content[start_pos:], re.DOTALL)
+        
+        # Find all requirements
+        requirements = []
+        req_matches = re.findall(r'### REQ-(\w+)\s*\n(.*?)\n(?=###|\Z)', content, re.DOTALL)
+        for req_id, desc in req_matches:
+            requirements.append(Requirement(req_id, desc.strip(), None))
+        
+        return Conversation(
+            project_name=self.project_name,
+            state_machine_code=state_machine_code,
+            temporal_logic_blocks=temporal_blocks,
+            full_content=content,
+            requirements=requirements
+        )
     
-    def _description_to_formula(self, desc: str) -> Formula:
-        """Convert requirement description to temporal formula"""
-        # Common patterns in requirements
-        patterns = {
-            r'always': AG,
-            r'eventually': EF,
-            r'after (.*?) then': lambda x: Implies(O(self._parse_state(x)), self._current_state()),
-            r'must be followed by': lambda x, y: AG(Implies(x, EF(y))),
-            r'never': lambda x: AG(Not(x)),
-            r'before (.*?) occurs': lambda x, y: Implies(O(self._parse_state(x)), Not(y))
+    def execute_code(self, conversation: Conversation) -> None:
+        """Execute the state machine and temporal logic code"""
+        namespace = {
+            'project_name': conversation.project_name,
+            'Requirement': Requirement
         }
         
-        # Example conversion (to be expanded)
-        if "always" in desc.lower():
-            state_desc = re.sub(r'always', '', desc.lower()).strip()
-            return AG(self._parse_state(state_desc))
-        
-        # Default to basic property
-        return self._parse_state(desc)
-    
-    def _parse_state(self, desc: str) -> Formula:
-        """Parse state description into formula"""
-        # Create/reuse propositions based on description
-        key = desc.lower().strip()
-        if key not in self.props:
-            # Handle different state descriptions
-            if "waiting" in key:
-                self.props[key] = Prop(key, lambda s: s.get("state") == "waiting_for_input")
-            elif "processing" in key:
-                self.props[key] = Prop(key, lambda s: s.get("state") == "processing")
-            elif "responding" in key:
-                self.props[key] = Prop(key, lambda s: s.get("state") == "responding")
-            elif "error" in key:
-                self.props[key] = Prop(key, lambda s: s.get("state") == "error")
-            else:
-                # Default proposition
-                self.props[key] = Prop(key, lambda s: True)
+        try:
+            # Execute state machine code first
+            print("\nExecuting state machine code...")
+            exec(conversation.state_machine_code, namespace)
             
-        return self.props.get(key, Prop(key, lambda s: True))
+            # Generate diagram if model was created
+            if 'model' in namespace:
+                self.generate_diagram(namespace['model'])
+            
+            # Execute each temporal logic block
+            print("\nExecuting temporal logic blocks...")
+            for i, block in enumerate(conversation.temporal_logic_blocks, 1):
+                print(f"\nTemporal Logic Block {i}:")
+                exec(block, namespace)
+                
+        except Exception as e:
+            print(f"Error executing code: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def generate_diagram(self, model) -> None:
+        """Generate and save the state machine diagram"""
+        dot_file = f"{self.project_name}-graph.dot"
+        png_file = f"{self.project_name}-graph.png"
+        
+        try:
+            # Create a new directed graph
+            dot = graphviz.Digraph(comment=f'State Machine for {self.project_name}')
+            dot.attr(rankdir='LR')  # Left to right layout
+            
+            # Add states as nodes
+            for state in model.states:
+                # Create readable label from state dict
+                label = '\n'.join(f"{k}={v}" for k, v in state.items())
+                # Create unique state ID
+                state_id = str(hash(frozenset(state.items())))
+                dot.node(state_id, label)
+            
+            # Add transitions as edges
+            for state, next_states in model.transitions.items():
+                state_id = str(hash(state))
+                for next_state in next_states:
+                    next_id = str(hash(next_state))
+                    dot.edge(state_id, next_id)
+            
+            # Save the dot file
+            dot.save(dot_file)
+            
+            # Render PNG
+            dot.render(filename=f"{self.project_name}-graph", format='png', cleanup=True)
+            print(f"Generated {dot_file} and {png_file}")
+            
+            # Update image reference in markdown
+            self.update_image_reference(png_file)
+            
+        except Exception as e:
+            print(f"Error generating diagram: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def update_image_reference(self, png_file: str) -> None:
+        """Update the markdown file with the current diagram"""
+        if not self.project_name:
+            return
+            
+        md_file = f"{self.project_name}-REQUIREMENTS.md"
+        if not os.path.exists(md_file):
+            return
+            
+        with open(md_file, 'r') as f:
+            content = f.read()
+            
+        # Look for existing image reference
+        image_pattern = r'!\[State Machine\]\(.*?\)'
+        new_image_ref = f'![State Machine]({png_file})'
+        
+        if re.search(image_pattern, content):
+            # Update existing image reference
+            content = re.sub(image_pattern, new_image_ref, content)
+        else:
+            # Add new image reference after the first Python block
+            content = re.sub(
+                r'(```python.*?```)',
+                f'\\1\n\n{new_image_ref}',
+                content,
+                flags=re.DOTALL,
+                count=1  # Only replace first occurrence
+            )
+            
+        with open(md_file, 'w') as f:
+            f.write(content)
 
-def verify_requirements(model: Model, requirements: List[Requirement]) -> Dict[str, bool]:
+def verify_requirements(model: Any, requirements: List[Requirement]) -> Dict[str, bool]:
     """Verify all requirements against the model"""
     results = {}
     for req in requirements:
-        # Check formula in initial states
-        satisfied = all(req.formula.eval(model, state) for state in model.states)
-        results[req.id] = satisfied
+        if req.formula is not None:
+            # Check formula in model
+            satisfied = model.check(req.formula)
+            results[req.id] = satisfied
     return results
 
 class MarkovState:
@@ -141,15 +305,22 @@ class MarkovModel:
         print(f"Generated {dot_file} and {png_file}")
 
 if __name__ == "__main__":
-    filename = sys.argv[1] if len(sys.argv) > 1 else "REQUIREMENTS.md"
-    project_name = filename.split('-')[0] if '-' in filename else filename.split('.')[0]
+    if len(sys.argv) < 2:
+        print("Usage: ./requirements_parser.py <requirements_file.md>")
+        sys.exit(1)
+        
+    filename = sys.argv[1]
     
-    print(f"Parsing requirements from: {filename}")
     parser = RequirementsParser()
-    reqs = parser.parse_file(filename)
+    conversation = parser.parse_file(filename)
     
+    if conversation:
+        parser.execute_code(conversation)
+    else:
+        print("Failed to parse conversation")
+
     # Create Markov chain model
-    model = MarkovModel(project_name)
+    model = MarkovModel(conversation.project_name)
     
     # Add states with preconditions
     initial = model.add_state("initial", "system.started == true")
@@ -185,7 +356,7 @@ if __name__ == "__main__":
         state.normalize_probabilities()
     
     # Generate visualization
-    model.generate_dot(f"{project_name}-graph")
+    model.generate_dot(f"{conversation.project_name}-graph")
     
     # Create Model for verification (convert MarkovModel to verification Model)
     states = []
@@ -206,11 +377,11 @@ if __name__ == "__main__":
     
     # Verify requirements
     print("\nVerifying requirements against model:")
-    results = verify_requirements(verification_model, reqs)
+    results = verify_requirements(verification_model, conversation.requirements)
     
     # Print results
     for req_id, satisfied in results.items():
-        req = next(r for r in reqs if r.id == req_id)
+        req = next(r for r in conversation.requirements if r.id == req_id)
         print(f"\nREQ-{req_id}: {'✓' if satisfied else '✗'}")
         print(f"Description: {req.description}")
         if not satisfied:
