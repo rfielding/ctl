@@ -107,6 +107,10 @@ class Model:
     def __init__(self, states: List[State], transitions: Dict[StateItems, List[StateItems]]):
         self.states = states
         self.transitions = transitions
+        # Cache for predecessors
+        self._predecessor_cache: Dict[StateItems, List[State]] = {}
+        # Cache for hashable states
+        self._hashable_cache: Dict[str, StateItems] = {}
 
     def get_transitions(self, state: State) -> List[State]:
         state_items = hashable(state)
@@ -116,10 +120,14 @@ class Model:
 
     def get_predecessors(self, state: State) -> List[State]:
         state_items = hashable(state)
+        if state_items in self._predecessor_cache:
+            return self._predecessor_cache[state_items]
+            
         result = []
         for src_items, targets in self.transitions.items():
             if state_items in targets:
                 result.append(dict(src_items))
+        self._predecessor_cache[state_items] = result
         return result
 
     def reachable(self, state: State, f: Formula) -> bool:
@@ -192,6 +200,14 @@ class Model:
 
     def always_globally_past(self, state, f):
         return self.always_globally(state, f)
+
+    # Add helper method to cache hashable states
+    def _get_hashable(self, state: State) -> StateItems:
+        # Use string representation as dict key
+        key = str(sorted(state.items()))
+        if key not in self._hashable_cache:
+            self._hashable_cache[key] = hashable(state)
+        return self._hashable_cache[key]
 
 # === Entry point ===
 
@@ -281,23 +297,30 @@ class S(Formula):
     
     def eval(self, model: 'Model', state: State) -> bool:
         visited: Set[StateItems] = set()
+        cache: Dict[StateItems, bool] = {}  # Cache results
         
         def check_since(s: State) -> bool:
-            s_items = hashable(s)
+            s_items = model._get_hashable(s)
+            if s_items in cache:
+                return cache[s_items]
             if s_items in visited:
                 return False
+                
             visited.add(s_items)
             
-            # If f2 is true here, we've found a witness
+            # Check f2 first (short circuit)
             if self.f2.eval(model, s):
+                cache[s_items] = True
                 return True
                 
-            # If f1 is false here, path is invalid
+            # Then check f1
             if not self.f1.eval(model, s):
+                cache[s_items] = False
                 return False
                 
-            # Check predecessors (must be true in at least one path)
-            preds = model.get_predecessors(s)
-            return any(check_since(pred) for pred in preds)
+            # Check predecessors
+            result = any(check_since(pred) for pred in model.get_predecessors(s))
+            cache[s_items] = result
+            return result
             
         return check_since(state)
