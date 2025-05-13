@@ -2,39 +2,53 @@
 
 # POBTL* Model Checker Core
 
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Union, Set, FrozenSet, Tuple
 from dataclasses import dataclass
+
+State = Dict[str, Any]
+StateItems = FrozenSet[tuple[str, Any]]
 
 # === Formula Base ===
 
 class Formula:
-    def eval(self, model, state): raise NotImplementedError()
+    def eval(self, model: 'Model', state: State) -> bool:
+        raise NotImplementedError()
 
 # === Propositions ===
 
 class Prop(Formula):
-    def __init__(self, name: str, func: Callable[[Dict], bool]):
-        self.name, self.func = name, func
-    def eval(self, model, state): return self.func(state)
+    def __init__(self, name: str, func: Callable[[State], bool]):
+        self.name = name
+        self.func = func
+    def eval(self, model: 'Model', state: State) -> bool:
+        return self.func(state)
     def __repr__(self): return self.name
 
 # === Boolean Connectives ===
 
 class Not(Formula):
-    def __init__(self, f): self.f = f
-    def eval(self, model, state): return not self.f.eval(model, state)
+    def __init__(self, f: Formula):
+        self.f = f
+    def eval(self, model: 'Model', state: State) -> bool:
+        return not self.f.eval(model, state)
 
 class And(Formula):
-    def __init__(self, f, g): self.f, self.g = f, g
-    def eval(self, model, state): return self.f.eval(model, state) and self.g.eval(model, state)
+    def __init__(self, f: Formula, g: Formula):
+        self.f, self.g = f, g
+    def eval(self, model: 'Model', state: State) -> bool:
+        return self.f.eval(model, state) and self.g.eval(model, state)
 
 class Or(Formula):
-    def __init__(self, f, g): self.f, self.g = f, g
-    def eval(self, model, state): return self.f.eval(model, state) or self.g.eval(model, state)
+    def __init__(self, f: Formula, g: Formula):
+        self.f, self.g = f, g
+    def eval(self, model: 'Model', state: State) -> bool:
+        return self.f.eval(model, state) or self.g.eval(model, state)
 
 class Implies(Formula):
-    def __init__(self, f, g): self.f, self.g = f, g
-    def eval(self, model, state): return (not self.f.eval(model, state)) or self.g.eval(model, state)
+    def __init__(self, f: Formula, g: Formula):
+        self.f, self.g = f, g
+    def eval(self, model: 'Model', state: State) -> bool:
+        return (not self.f.eval(model, state)) or self.g.eval(model, state)
 
 class Iff(Formula):
     def __init__(self, f, g): self.f, self.g = f, g
@@ -45,20 +59,28 @@ def StrongImplies(p, q): return And(EF(p), AG(Implies(p, q)))
 # === Modal Operators ===
 
 class EF(Formula):
-    def __init__(self, f): self.f = f
-    def eval(self, model, state): return model.reachable(state, self.f)
+    def __init__(self, f: Formula):
+        self.f = f
+    def eval(self, model: 'Model', state: State) -> bool:
+        return model.reachable(state, self.f)
 
 class AF(Formula):
-    def __init__(self, f): self.f = f
-    def eval(self, model, state): return model.must_reach(state, self.f)
+    def __init__(self, f: Formula):
+        self.f = f
+    def eval(self, model: 'Model', state: State) -> bool:
+        return model.must_reach(state, self.f)
 
 class EG(Formula):
-    def __init__(self, f): self.f = f
-    def eval(self, model, state): return model.exists_globally(state, self.f)
+    def __init__(self, f: Formula):
+        self.f = f
+    def eval(self, model: 'Model', state: State) -> bool:
+        return model.exists_globally(state, self.f)
 
 class AG(Formula):
-    def __init__(self, f): self.f = f
-    def eval(self, model, state): return model.always_globally(state, self.f)
+    def __init__(self, f: Formula):
+        self.f = f
+    def eval(self, model: 'Model', state: State) -> bool:
+        return model.always_globally(state, self.f)
 
 class EP(Formula):
     def __init__(self, f): self.f = f
@@ -78,65 +100,85 @@ class AH(Formula):
 
 # === Model ===
 
-def hashable(state):
-    return frozenset(state.items()) if isinstance(state, dict) else state
+def hashable(state: State) -> StateItems:
+    return frozenset(state.items())
 
 class Model:
-    def __init__(self, states: List[Dict], transitions: Dict[Any, List[Any]]):
+    def __init__(self, states: List[State], transitions: Dict[StateItems, List[StateItems]]):
         self.states = states
-        self.transitions = {
-            hashable(s): [hashable(t) for t in targets]
-            for s, targets in transitions.items()
-        }
+        self.transitions = transitions
 
-    def reachable(self, state, f):
-        visited, stack = set(), [hashable(state)]
+    def get_transitions(self, state: State) -> List[State]:
+        state_items = hashable(state)
+        if state_items not in self.transitions:
+            return []
+        return [dict(t) for t in self.transitions[state_items]]
+
+    def get_predecessors(self, state: State) -> List[State]:
+        state_items = hashable(state)
+        result = []
+        for src_items, targets in self.transitions.items():
+            if state_items in targets:
+                result.append(dict(src_items))
+        return result
+
+    def reachable(self, state: State, f: Formula) -> bool:
+        visited: Set[StateItems] = set()
+        stack = [hashable(state)]
         while stack:
             current = stack.pop()
             if current not in visited:
                 visited.add(current)
-                sdict = dict(current)
-                if f.eval(self, sdict): return True
-                stack.extend(self.transitions.get(current, []))
+                if f.eval(self, dict(current)):
+                    return True
+                for next_state in self.transitions.get(current, []):
+                    if next_state not in visited:
+                        stack.append(next_state)
         return False
 
-    def must_reach(self, state, f):
-        visited = set()
-        def dfs(s):
-            hs = hashable(s)
-            if hs in visited: return True
-            visited.add(hs)
-            sdict = dict(hs)
-            if f.eval(self, sdict): return True
-            succs = self.transitions.get(hs, [])
-            return succs and all(dfs(t) for t in succs)
+    def must_reach(self, state: State, f: Formula) -> bool:
+        visited: Set[StateItems] = set()
+        def dfs(s: State) -> bool:
+            s_items = hashable(s)
+            if s_items in visited:
+                return True
+            visited.add(s_items)
+            if f.eval(self, s):
+                return True
+            next_states = self.transitions.get(s_items, [])
+            return next_states and all(dfs(dict(t)) for t in next_states)
         return dfs(state)
 
-    def always_globally(self, state, f):
-        visited = set()
-        def dfs(s):
-            hs = hashable(s)
-            if hs in visited: return True
-            visited.add(hs)
-            sdict = dict(hs)
-            if not f.eval(self, sdict): return False
-            return all(dfs(t) for t in self.transitions.get(hs, []))
-        return dfs(state)
-
-    def exists_globally(self, state, f):
-        path, visited = [], set()
-        def dfs(s):
-            hs = hashable(s)
-            if hs in path: return True
-            if hs in visited: return False
-            visited.add(hs)
-            sdict = dict(hs)
-            if not f.eval(self, sdict): return False
-            path.append(hs)
-            for t in self.transitions.get(hs, []):
-                if dfs(t): return True
+    def exists_globally(self, state: State, f: Formula) -> bool:
+        path: List[StateItems] = []
+        visited: Set[StateItems] = set()
+        def dfs(s: State) -> bool:
+            s_items = hashable(s)
+            if s_items in path:
+                return True
+            if s_items in visited:
+                return False
+            visited.add(s_items)
+            if not f.eval(self, s):
+                return False
+            path.append(s_items)
+            for next_state in self.transitions.get(s_items, []):
+                if dfs(dict(next_state)):
+                    return True
             path.pop()
             return False
+        return dfs(state)
+
+    def always_globally(self, state: State, f: Formula) -> bool:
+        visited: Set[StateItems] = set()
+        def dfs(s: State) -> bool:
+            s_items = hashable(s)
+            if s_items in visited:
+                return True
+            visited.add(s_items)
+            if not f.eval(self, s):
+                return False
+            return all(dfs(dict(t)) for t in self.transitions.get(s_items, []))
         return dfs(state)
 
     def reachable_past(self, state, f):
@@ -160,47 +202,37 @@ def eval_formula(formula: Formula, model_or_states: Union[Model, List[Dict]]) ->
     return [s for s in model.states if formula.eval(model, s)]
 
 @dataclass 
-class Y:  # Yesterday/Previous
-    f: Any
-    def eval(self, model, state):
-        # Find all states that could transition to current
-        current = frozenset(state.items()) if isinstance(state, dict) else state
-        possible_pasts = set()
-        for s in model.states:
-            s_frozen = frozenset(s.items())
-            if current in model.transitions[s_frozen]:
-                possible_pasts.add(s_frozen)
-        return any(self.f.eval(model, dict(s)) for s in possible_pasts)
+class Y(Formula):  # Yesterday/Previous
+    f: Formula
+    def eval(self, model: 'Model', state: State) -> bool:
+        return any(self.f.eval(model, pred) for pred in model.get_predecessors(state))
 
 @dataclass
-class O:  # Once (in the past)
-    f: Any
-    def eval(self, model, state):
-        visited = set()
-        def check_past(s):
-            s_frozen = frozenset(s.items()) if isinstance(s, dict) else s
-            if s_frozen in visited:
-                return False
-            visited.add(s_frozen)
-            if self.f.eval(model, dict(s_frozen)):
-                return True
-            # Check all possible previous states
-            for prev_s in model.states:
-                prev_frozen = frozenset(prev_s.items())
-                if s_frozen in model.transitions[prev_frozen]:
-                    if check_past(prev_s):
-                        return True
-            return False
-        return check_past(state)
+class O(Formula):  # Once (in the past)
+    f: Formula
+    def eval(self, model: 'Model', state: State) -> bool:
+        visited: Set[StateItems] = set()
+        stack = [hashable(state)]
+        while stack:
+            current = stack.pop()
+            if current not in visited:
+                visited.add(current)
+                if self.f.eval(model, dict(current)):
+                    return True
+                for pred in model.get_predecessors(dict(current)):
+                    pred_items = hashable(pred)
+                    if pred_items not in visited:
+                        stack.append(pred_items)
+        return False
 
 @dataclass
-class H:  # Historically (always in the past)
-    f: Any
-    def eval(self, model, state):
-        visited = set()
-        def check_past(s):
+class H(Formula):  # Historically (always in the past)
+    f: Formula
+    def eval(self, model: 'Model', state: State) -> bool:
+        visited: Set[StateItems] = set()
+        def check_past(s: State) -> bool:
             # Convert state to frozen set for consistent handling
-            s_frozen = frozenset(s.items()) if isinstance(s, dict) else s
+            s_frozen = hashable(s)
             
             # If we've seen this state before in our traversal:
             # Return True because we've already verified this path
@@ -219,11 +251,7 @@ class H:  # Historically (always in the past)
             
             # SECOND: Find all states that could lead to current state
             # by checking which states have transitions to us
-            predecessor_states = []
-            for prev_s in model.states:
-                prev_frozen = frozenset(prev_s.items())
-                if s_frozen in model.transitions[prev_frozen]:
-                    predecessor_states.append(prev_frozen)
+            predecessor_states = model.get_predecessors(s)
             
             # THIRD: Handle different cases:
             
@@ -246,25 +274,30 @@ class H:  # Historically (always in the past)
         return check_past(state)
 
 @dataclass
-class S:  # Since
-    f1: Any  # First formula
-    f2: Any  # Second formula
-    def eval(self, model, state):
-        visited = set()
-        def check_since(s):
-            s_frozen = frozenset(s.items()) if isinstance(s, dict) else s
-            if s_frozen in visited:
+class S(Formula):
+    """Since operator: f1 has been true since f2 was true in the past"""
+    def __init__(self, f1: Formula, f2: Formula):
+        self.f1, self.f2 = f1, f2
+    
+    def eval(self, model: 'Model', state: State) -> bool:
+        visited: Set[StateItems] = set()
+        
+        def check_since(s: State) -> bool:
+            s_items = hashable(s)
+            if s_items in visited:
                 return False
-            visited.add(s_frozen)
-            # f2 holds now
-            if self.f2.eval(model, dict(s_frozen)):
+            visited.add(s_items)
+            
+            # If f2 is true here, we've found a witness
+            if self.f2.eval(model, s):
                 return True
-            # f1 holds now and since holds in some previous state
-            if self.f1.eval(model, dict(s_frozen)):
-                for prev_s in model.states:
-                    prev_frozen = frozenset(prev_s.items())
-                    if s_frozen in model.transitions[prev_frozen]:
-                        if check_since(prev_s):
-                            return True
-            return False
+                
+            # If f1 is false here, path is invalid
+            if not self.f1.eval(model, s):
+                return False
+                
+            # Check predecessors (must be true in at least one path)
+            preds = model.get_predecessors(s)
+            return any(check_since(pred) for pred in preds)
+            
         return check_since(state)
