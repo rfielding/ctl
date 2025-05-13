@@ -1,83 +1,92 @@
 # LTL + Past-LTL Formula Examples
 
-## Trace
+## Trace Example
 ```python
 trace = [
-    {"id": 0, "charged": False},
-    {"id": 1, "charged": False},
-    {"id": 2, "charged": True},
-    {"id": 3, "charged": True},
-    {"id": 4, "charged": False}
+    {"state": "initial"},
+    {"state": "waiting_for_input"},
+    {"state": "processing"},
+    {"state": "responding"},
+    {"state": "waiting_for_input"}
 ]
 ```
 
-## Formulas
+## Basic Propositions
 ```python
-charged = Prop("charged", lambda s: s["charged"])
-not_charged = Not(charged)
+# Define basic state checks
+is_processing = Prop("processing", lambda s: s["state"] == "processing")
+is_waiting = Prop("waiting", lambda s: s["state"] == "waiting_for_input")
+is_responding = Prop("responding", lambda s: s["state"] == "responding")
 ```
 
-### Future Temporal Logic
-| Formula | Description |
-|---------|-------------|
-| `F(charged)` | Eventually charged |
-| `G(charged)` | Always charged |
-| `X(charged)` | Next state charged |
-| `charged U not_charged` | Charged until not_charged |
+### Future Temporal Logic (Looking Forward)
+| Operator | Formula Example | Description |
+|----------|----------------|-------------|
+| `F` (Finally) | `F(is_processing)` | Eventually the system will be processing |
+| `G` (Globally) | `G(is_waiting)` | From now on, system will always be waiting |
+| `X` (Next) | `X(is_responding)` | In the next state, system will be responding |
+| `U` (Until) | `is_waiting U is_processing` | System waits until processing begins |
 
-### Past Temporal Logic
-| Formula | Description |
-|---------|-------------|
-| `P(charged)` | Charged was true at some point |
-| `H(charged)` | Charged has always been true |
-| `charged S not_charged` | Charged has held since not_charged |
+### Past Temporal Logic (Looking Backward)
+| Operator | Formula Example | Description |
+|----------|----------------|-------------|
+| `O` or `P` (Once/Past) | `O(is_processing)` | At some point in the past, system was processing |
+| `H` (Historically) | `H(is_waiting)` | System has always been in waiting state |
+| `Y` (Yesterday) | `Y(is_responding)` | In the previous state, system was responding |
+| `S` (Since) | `is_waiting S is_processing` | System has been waiting since it was processing |
 
-### Strong Implication
-| Formula | Description |
-|---------|-------------|
-| `StrongImplies(charged, not_charged)` | Whenever charged, then also not_charged |
-| `F(StrongImplies(charged, not_charged))` | Eventually, charged → not_charged |
-| `G(StrongImplies(charged, charged))` | Always, charged implies itself |
+### Common Requirement Patterns
 
-### Logical Combinations
+1. Response Property:
 ```python
-Not(F(charged))              
-And(F(charged), G(charged)) 
-Or(P(charged), H(not_charged))
-Implies(G(charged), F(not_charged))
-StrongImplies(P(charged), charged)
+G(is_waiting → F(is_responding))  # Every wait state is eventually followed by a response
 ```
 
-### Evaluation
+2. Precedence Property:
+```python
+G(is_responding → O(is_processing))  # Every response must be preceded by processing
+```
+
+3. Bounded Response:
+```python
+G(is_waiting → X(F(is_responding)))  # Response happens within one step of waiting
+```
+
+4. State Sequence:
+```python
+G(is_processing → (X(is_responding) ∧ O(is_waiting)))  # Processing must be between waiting and responding
+```
+
+### Evaluation Example
 ```python
 from ltl_trace import *
-result = eval_ltl(F(charged), trace)
-print("F(charged) =", result)
+
+# Check if a response always follows processing
+formula = G(StrongImplies(is_processing, F(is_responding)))
+result = eval_ltl(formula, trace)
+print("Property satisfied:", result)
 ```
 
-# Past Operator Examples
+## Common Use Cases
 
-1. Y(Queue==4)
-   - "Previous state could have been Queue=4"
-   - Useful for checking immediate history
+1. Protocol Verification:
+   - `G(request → F(response))` - Every request eventually gets a response
+   - `G(response → O(request))` - Every response must have had a request
 
-2. O(Queue==5)
-   - "At some point in the past, Queue was 5"
-   - Useful for checking if system ever reached capacity
+2. Safety Properties:
+   - `G(not_error)` - System never enters error state
+   - `H(valid_state)` - System has always been in a valid state
 
-3. H(Queue>=0)
-   - "Queue has always been non-negative"
-   - Safety property over history
+3. Liveness Properties:
+   - `G(F(progress))` - System always eventually makes progress
+   - `F(G(stable))` - System eventually becomes permanently stable
 
-4. msg S ack
-   - "Message received since last acknowledgement"
-   - Protocol verification
+4. Fairness Properties:
+   - `G(waiting → F(served))` - Every waiting client is eventually served
+   - `G(F(reset))` - System is reset infinitely often
 
-5. Combined Past/Future:
-   G(ack → O(msg))
-   - "Every ack is preceded by a message"
-   - Protocol ordering
-
-6. F(done ∧ H(valid))
-   - "Eventually done, and path there was always valid"
-   - Path validation
+## Notes
+- Future operators (F, G, X, U) look forward from the current state
+- Past operators (O/P, H, Y, S) look backward from the current state
+- Combining past and future operators allows expressing complex temporal relationships
+- The trace evaluation starts at index 0 and moves forward
