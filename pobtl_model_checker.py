@@ -132,16 +132,23 @@ class Model:
 
     def reachable(self, state: State, f: Formula) -> bool:
         visited: Set[StateItems] = set()
-        stack = [hashable(state)]
+        # Use deque instead of list for stack (faster pop/append)
+        from collections import deque
+        stack = deque([self._get_hashable(state)])
+        
         while stack:
             current = stack.pop()
             if current not in visited:
                 visited.add(current)
-                if f.eval(self, dict(current)):
+                current_dict = dict(current)
+                # Check formula first (short circuit)
+                if f.eval(self, current_dict):
                     return True
-                for next_state in self.transitions.get(current, []):
-                    if next_state not in visited:
-                        stack.append(next_state)
+                # Add unvisited successors
+                stack.extend(
+                    next_state for next_state in self.transitions.get(current, [])
+                    if next_state not in visited
+                )
         return False
 
     def must_reach(self, state: State, f: Formula) -> bool:
