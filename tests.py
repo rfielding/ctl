@@ -122,5 +122,67 @@ class TemporalLogicTests(unittest.TestCase):
         # Test: msg until ack
         self.assertTrue(EF(And(ack, O(msg))).eval(proto_model, proto_states[0]))
 
+    def test_past_present_future(self):
+        """Test properties that involve past, present, and future states"""
+        state1 = {"Queue": 1}
+        state2 = {"Queue": 2}
+        
+        # Test: If we're at 2 now, we must have been at 1 or 3 before,
+        # and we can reach 0 in the future
+        past_present_future = And(
+            And(Y(Or(self.q1, self.q3)), self.q2),
+            EF(self.q0)
+        )
+        self.assertTrue(past_present_future.eval(self.model, state2))
+        
+        # Test: Every state that can reach 3 must have passed through 2
+        must_pass_through = AG(
+            Implies(
+                EF(self.q3),
+                Or(self.q2, O(self.q2))  # Either at 2 now or was at 2 in the past
+            )
+        )
+        self.assertTrue(must_pass_through.eval(self.model, state1))
+        
+        # Test: From any state, if we were at 0 in the past,
+        # we must have gone through each number to reach current state
+        ordered_path = AG(
+            Implies(
+                O(self.q0),
+                And(
+                    Implies(self.q2, O(self.q1)),
+                    Implies(self.q3, O(self.q2))
+                )
+            )
+        )
+        self.assertTrue(ordered_path.eval(self.model, state1))
+        
+        # Test: If we reach 3 in the future, and we were at 0 in the past,
+        # we must be currently in the middle of the queue (1 or 2)
+        middle_of_journey = Implies(
+            And(O(self.q0), EF(self.q3)),
+            Or(self.q1, self.q2)
+        )
+        self.assertTrue(middle_of_journey.eval(self.model, state2))
+        
+        # Test: From any state, if we can reach 0 in the future and were at 3 in the past,
+        # we must be either decreasing or staying in place
+        decreasing_path = AG(
+            Implies(
+                And(O(self.q3), EF(self.q0)),
+                Or(
+                    self.q3,  # Could still be at 3
+                    Or(
+                        And(self.q2, Y(self.q3)),  # Just moved from 3 to 2
+                        Or(
+                            And(self.q1, Or(Y(self.q2), O(self.q2))),  # At 1, came through 2
+                            And(self.q0, Or(Y(self.q1), O(self.q1)))   # At 0, came through 1
+                        )
+                    )
+                )
+            )
+        )
+        self.assertTrue(decreasing_path.eval(self.model, state2))
+
 if __name__ == '__main__':
     unittest.main()
