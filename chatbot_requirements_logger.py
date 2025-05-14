@@ -7,6 +7,7 @@ from typing import Callable, Optional, Any
 from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from tool_functions import set_project
+from pobtl_model_checker import Model, hashable
 
 project: str = os.getenv("PROJECT", "default")
 openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
@@ -44,7 +45,7 @@ def load_readme_context() -> str:
         return "# POBTL* README not found."
     return fullData if fullData else "# POBTL* README not found."
 
-tools: list[dict[str, Any]] = [{
+tools = [{
     "type": "function",
     "function": {
         "name": "set_project",
@@ -60,6 +61,22 @@ tools: list[dict[str, Any]] = [{
             "required": ["project_name"]
         }
     }
+}, {
+    "type": "function",
+    "function": {
+        "name": "graphviz_render",
+        "description": "Render a graphviz DOT diagram of the model",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "dot_string": {
+                    "type": "string",
+                    "description": "The graphviz DOT format string to render"
+                }
+            },
+            "required": ["dot_string"]
+        }
+    }
 }]
 
 def chat() -> None:
@@ -69,6 +86,17 @@ def chat() -> None:
     readme_context: str = load_readme_context()
     base_prompt: str = (
         """You are a modal logic and model construction assistant.
+
+When creating or modifying models, you must ALWAYS create a Markov Chain visualization showing:
+1. States as boxes with their variable assignments (e.g., "x=1\\ny=false")
+2. Transitions with labels showing probability and variable updates (e.g., "0.5: (x:=x+1)")
+3. Use the graphviz_render tool to generate and include the visualization inline
+
+For example, when you create a model, you must:
+1. Define the states and transitions
+2. Create a DOT string showing the Markov Chain
+3. Call graphviz_render with the DOT string
+4. Reference the visualization in your response
 
 Before translating any requirements into POBTL* formulas, help the user build a discrete-event transition system model in Python. The system will be a Kripke-style state machine where each state is a combination of variable assignments, and each transition is a guarded update with a probability.
 
@@ -111,14 +139,24 @@ Begin modeling the user's system."""
             if msg.tool_calls:
                 for tool_call in msg.tool_calls:
                     if tool_call.function.name == "set_project":
-                        args: dict[str, str] = eval(tool_call.function.arguments)
-                        result: str = set_project(args["project_name"])
+                        args = eval(tool_call.function.arguments)
+                        result = set_project(args["project_name"])
                         project = os.getenv("PROJECT", "default")
                         print(f"🔧 {result}")
                         append_to_requirements("system", result)
                         messages.append({
                             "role": "function",
                             "name": "set_project",
+                            "content": result
+                        })
+                    elif tool_call.function.name == "graphviz_render":
+                        args = eval(tool_call.function.arguments)
+                        result = graphviz_render(args["dot_string"])
+                        print(f"📊 {result}")
+                        append_to_requirements("system", result)
+                        messages.append({
+                            "role": "function",
+                            "name": "graphviz_render",
                             "content": result
                         })
                 continue
@@ -134,6 +172,58 @@ Begin modeling the user's system."""
         except KeyboardInterrupt:
             print("\n👋 Exiting.")
             break
+
+def graphviz_render(dot_string: str) -> str:
+    """Renders a graphviz DOT diagram to a file and returns the filename"""
+    try:
+        from graphviz import Source
+        s = Source(dot_string)
+        filename = f"{project}-model"
+        # Generate PNG file
+        s.render(filename, format='png', cleanup=True)
+        
+        # Add the image reference to the requirements file
+        with open(requirements_file(), "a") as f:
+            f.write(f"\n## Model Visualization\n\n")
+            f.write(f"![State Machine Model]({filename}.png)\n\n")
+            f.write("```dot\n")
+            f.write(dot_string)
+            f.write("\n```\n\n")
+            
+        return f"✅ Generated {filename}.png and added to requirements"
+    except Exception as e:
+        return f"❌ Failed to render graphviz: {str(e)}"
+
+def model_to_dot(model: Model) -> str:
+    dot = ["digraph G {"]
+    dot.append("  node [shape=record];")
+    
+    # Add all states with their variable assignments
+    for i, state in enumerate(model.states):
+        state_label = "\\n".join(f"{k}={v}" for k, v in state.items())
+        dot.append(f'  s{i} [label="{state_label}"];')
+    
+    # Add transitions with probability and variable updates
+    for i, state in enumerate(model.states):
+        state_items = hashable(state)
+        if state_items in model.transitions:
+            for next_state in model.transitions[state_items]:
+                # Find index of target state
+                target_idx = next(j for j, s in enumerate(model.states) 
+                                if hashable(s) == next_state)
+                # Compare states to show what changed
+                changes = []
+                for k, v in dict(next_state).items():
+                    if k in state and state[k] != v:
+                        changes.append(f"{k}:={v}")
+                change_label = ", ".join(changes) if changes else ""
+                if change_label:
+                    dot.append(f'  s{i} -> s{target_idx} [label="{change_label}"];')
+                else:
+                    dot.append(f"  s{i} -> s{target_idx};")
+    
+    dot.append("}")
+    return "\n".join(dot)
 
 if __name__ == "__main__":
     chat()
