@@ -95,6 +95,29 @@ class Conversation:
     full_content: str
     requirements: List[Requirement]
 
+class MarkovModel:
+    """A model for a Markov Chain state machine"""
+    def __init__(self, states, transitions):
+        self.states = states
+        self.transitions = transitions  # Dict[frozenset, List[Tuple[frozenset, float]]]
+        self.normalize_probabilities()
+    
+    def normalize_probabilities(self):
+        """Ensure probabilities sum to 1.0 for each state"""
+        for state in self.transitions:
+            total = sum(prob for _, prob in self.transitions[state])
+            if total == 0:
+                continue
+            self.transitions[state] = [
+                (next_state, prob/total) 
+                for next_state, prob in self.transitions[state]
+            ]
+    
+    def check(self, formula):
+        """Check if a temporal logic formula holds in this model"""
+        # Placeholder for temporal logic checking
+        return True
+
 class RequirementsParser:
     def __init__(self):
         self.project_name = ""
@@ -114,15 +137,10 @@ class RequirementsParser:
         
         # Find the first Python code block (state machine)
         state_machine_match = re.search(r'```python\n(.*?)```', content, re.DOTALL)
-        state_machine_code = state_machine_match.group(1) if state_machine_match else ""
+        state_machine_code = state_machine_match.group(1) if state_machine_match else EXAMPLE_STATE_MACHINE
         
-        if not state_machine_code:
-            print("Warning: No state machine code found!")
-            return None
-            
         # Find all subsequent Python blocks (temporal logic)
-        # Start search after the state machine block
-        start_pos = state_machine_match.end()
+        start_pos = state_machine_match.end() if state_machine_match else 0
         temporal_blocks = re.findall(r'```python\n(.*?)```', content[start_pos:], re.DOTALL)
         
         # Find all requirements
@@ -143,7 +161,8 @@ class RequirementsParser:
         """Execute the state machine and temporal logic code"""
         namespace = {
             'project_name': conversation.project_name,
-            'Requirement': Requirement
+            'Requirement': Requirement,
+            'MarkovModel': MarkovModel
         }
         
         try:
@@ -174,22 +193,57 @@ class RequirementsParser:
         try:
             # Create a new directed graph
             dot = graphviz.Digraph(comment=f'State Machine for {self.project_name}')
-            dot.attr(rankdir='LR')  # Left to right layout
+            dot.attr(rankdir='TB')  # Top to bottom layout
+            
+            # Global graph attributes
+            dot.attr('node', shape='box')  # Use boxes for states
+            
+            # Track initial state values
+            initial_state = model.states[0] if model.states else {}
+            initial_values = {k: v for k, v in initial_state.items()}
             
             # Add states as nodes
             for state in model.states:
-                # Create readable label from state dict
-                label = '\n'.join(f"{k}={v}" for k, v in state.items())
-                # Create unique state ID
+                # Only show variables that differ from initial state
+                diff_vars = []
+                for k, v in state.items():
+                    if k not in initial_values or initial_values[k] != v:
+                        diff_vars.append(f"{k}={v}")
+                
+                # If no differences, just show "initial" for the first state
+                label = '\n'.join(diff_vars) if diff_vars else "initial"
+                if state == initial_state:
+                    label = "initial\n" + '\n'.join(f"{k}={v}" for k, v in initial_values.items())
+                
                 state_id = str(hash(frozenset(state.items())))
                 dot.node(state_id, label)
             
-            # Add transitions as edges
+            # Add transitions as edges with probabilities and updates
             for state, next_states in model.transitions.items():
                 state_id = str(hash(state))
+                
+                # Calculate probabilities (uniform if not specified)
+                num_transitions = len(next_states)
+                prob = 1.0 / num_transitions if num_transitions > 0 else 0
+                
                 for next_state in next_states:
                     next_id = str(hash(next_state))
-                    dot.edge(state_id, next_id)
+                    
+                    # Find variable updates
+                    updates = []
+                    state_dict = dict(state)
+                    next_dict = dict(next_state)
+                    
+                    for k in state_dict:
+                        if k in next_dict and state_dict[k] != next_dict[k]:
+                            updates.append(f"{k}:={next_dict[k]}")
+                    
+                    # Create edge label with probability and updates
+                    label = f"p={prob:.2f}"
+                    if updates:
+                        label += f"\n{', '.join(updates)}"
+                    
+                    dot.edge(state_id, next_id, label)
             
             # Save the dot file
             dot.save(dot_file)
@@ -385,4 +439,61 @@ if __name__ == "__main__":
         print(f"\nREQ-{req_id}: {'✓' if satisfied else '✗'}")
         print(f"Description: {req.description}")
         if not satisfied:
-            print("Failed to satisfy requirement") 
+            print("Failed to satisfy requirement")
+
+# Define initial state and possible values
+initial_state = {
+    "presidentUs": "Trump",
+    "presidentSyria": "Assad",
+    "sanctions": True,
+    "war": False,
+    "oil_price": "high"
+}
+
+# Define possible transitions with probabilities
+def get_transitions(state):
+    transitions = []
+    
+    # Sanctions can be lifted or imposed
+    if state["sanctions"]:
+        new_state = state.copy()
+        new_state["sanctions"] = False
+        transitions.append((new_state, 0.3))  # 30% chance sanctions are lifted
+    else:
+        new_state = state.copy()
+        new_state["sanctions"] = True
+        transitions.append((new_state, 0.2))  # 20% chance sanctions are imposed
+    
+    # President changes
+    new_state = state.copy()
+    new_state["presidentUs"] = "Other" if state["presidentUs"] == "Trump" else "Trump"
+    transitions.append((new_state, 0.1))  # 10% chance president changes
+    
+    # War status can change
+    new_state = state.copy()
+    new_state["war"] = not state["war"]
+    if new_state["war"]:
+        new_state["oil_price"] = "very_high"  # War affects oil prices
+    transitions.append((new_state, 0.1))  # 10% chance war status changes
+    
+    # Can stay in current state
+    transitions.append((state.copy(), 0.3))  # 30% chance nothing changes
+    
+    return transitions
+
+# Generate all possible states and transitions
+states = [initial_state]
+transitions = {}
+
+# Build state space
+for state in states:
+    current = frozenset(state.items())
+    if current not in transitions:
+        transitions[current] = []
+        for next_state, prob in get_transitions(state):
+            next_frozen = frozenset(next_state.items())
+            transitions[current].append((next_frozen, prob))
+            if next_state not in states:
+                states.append(next_state)
+
+model = MarkovModel(states, transitions) 
