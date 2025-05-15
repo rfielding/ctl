@@ -83,76 +83,78 @@ class RequirementsParser:
         
     def parse_file(self, filename: str) -> Conversation:
         """Parse a markdown conversation file"""
-        print(f"Reading file: {filename}")
+        print(f"\n🔍 Reading file: {filename}")
         with open(filename, 'r') as f:
             content = f.read()
             
+        print("\n=== Content Analysis ===")
+        
+        # Build up the complete Python code to execute
+        python_code = [
+            "# Generated Python from markdown",
+            "from pobtl_model_checker import *  # Import all operators",
+            "",
+        ]
+        
         # Extract project name
         project_match = re.search(r'Set project to (.*?)\n', content)
         if project_match:
             self.project_name = project_match.group(1).strip()
-            print(f"Project name: {self.project_name}")
+            print(f"📁 Project name: {self.project_name}")
+            python_code.append(f"project_name = '{self.project_name}'")
+        else:
+            print("⚠️  No project name found")
         
         # Find Python code blocks that define the model
         python_blocks = re.findall(r'```python\n(.*?)```', content, re.DOTALL)
-        model_code = '\n'.join(python_blocks)  # Combine all Python blocks
+        if python_blocks:
+            print(f"📊 Found {len(python_blocks)} Python code blocks")
+            for block in python_blocks:
+                python_code.append("\n# Model definition")
+                python_code.append(block)
+        else:
+            print("⚠️  No Python code blocks found")
         
-        # Extract POBTL translations
-        pobtl_blocks = re.findall(r'<!-- POBTL\* Translation -->\n\*\*English:\*\* (.*?)\n\n```pobtl\n(.*?)\n```', 
-                                 content, re.DOTALL)
-        
-        # Execute the model code first
-        namespace = {
-            'project_name': self.project_name,
-            'Requirement': Requirement,
-            'MarkovModel': MarkovModel,
-            'Model': Model,
-        }
-        
-        try:
-            exec(model_code, namespace)
-            self.model = namespace.get('model')
-            if self.model:
-                print("\nSuccessfully loaded model from code blocks")
-        except Exception as e:
-            print(f"Error loading model: {e}")
-            self.model = None
-        
-        # Print and evaluate each POBTL formula
-        print("\n=== Temporal Logic Evaluations ===")
-        for english, formula in pobtl_blocks:
-            print(f"\n📝 Requirement: {english.strip()}")
-            print(f"🔬 Formula: {formula.strip()}")
-            if self.model:
-                try:
-                    result = self.model.eval_formula(formula.strip())
-                    print(f"✅ Evaluates to: {result}")
-                except Exception as e:
-                    print(f"❌ Evaluation failed: {str(e)}")
-            else:
-                print("⚠️  No model available for evaluation")
-        print("\n===============================")
-        
-        # Also find and show any temporal logic blocks
+        # Find temporal logic blocks and convert them to assertions
         temporal_blocks = re.findall(r'```temporal\n(.*?)```', content, re.DOTALL)
         if temporal_blocks:
-            print("\n=== Additional Temporal Logic Blocks ===")
-            for block in temporal_blocks:
-                print(f"\n🔍 Formula: {block.strip()}")
-                if self.model:
-                    try:
-                        result = self.model.eval_formula(block.strip())
-                        print(f"✅ Evaluates to: {result}")
-                    except Exception as e:
-                        print(f"❌ Evaluation failed: {str(e)}")
-                else:
-                    print("⚠️  No model available for evaluation")
-            print("\n===============================")
+            print(f"🔬 Found {len(temporal_blocks)} temporal logic blocks")
+            python_code.append("\n# Temporal logic assertions")
+            for i, formula in enumerate(temporal_blocks, 1):
+                formula_name = f"formula_{i}"
+                result_name = f"result_{i}"
+                python_code.append(f"\nprint('Evaluating formula {i}: {formula.strip()}')")
+                python_code.append(f"{formula_name} = {formula.strip()}")
+                python_code.append(f"{result_name} = [formula_{i}.eval(model, state) for state in model.states]")
+                python_code.append(f"print('Results for all states:', {result_name})")
+                python_code.append(f"for i, (state, result) in enumerate(zip(model.states, {result_name})):")
+                python_code.append("    print(f'State {i}: {state}')")
+                python_code.append("    print(f'Result: {result}\\n')")
+        
+        # Combine all code
+        final_code = '\n'.join(python_code)
+        print("\n=== Generated Python Code ===")
+        print(final_code)
+        
+        # Execute the combined code
+        print("\n=== Execution Results ===")
+        namespace = {}
+        try:
+            exec(final_code, namespace)
+            self.model = namespace.get('model')
+            if self.model:
+                print("\n✅ Successfully executed model and formulas")
+            else:
+                print("\n⚠️  No model object found after execution")
+        except Exception as e:
+            print(f"\n❌ Error during execution: {e}")
+            import traceback
+            traceback.print_exc()
         
         return Conversation(
             project_name=self.project_name,
-            state_machine_code=model_code,
-            temporal_logic_blocks=[block[1] for block in pobtl_blocks],
+            state_machine_code=final_code,  # Store the complete generated code
+            temporal_logic_blocks=temporal_blocks,
             full_content=content,
             requirements=[]
         )
