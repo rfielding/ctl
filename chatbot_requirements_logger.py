@@ -25,11 +25,50 @@ def append_to_requirements(role: str, message: str) -> None:
         f.write(f"\n## {role.capitalize()} @ {timestamp}\n\n")
         f.write(f"{message.strip()}\n")
 
+def create_requirements_file(project: str) -> None:
+    """Create a new requirements file for the project"""
+    with open(requirements_file(), "w") as f:
+        f.write(f"\n## System @ {datetime.now().isoformat()}\n\n")
+        f.write(f"Set project to {project}\n\n")
+        
+        # Write initial model definition
+        f.write("```python\n")
+        f.write("# Model Definition\n")
+        f.write("from pobtl_model_checker import Model, hashable, Formula, Prop\n")
+        f.write("from typing import Callable, Dict, Any\n\n")
+        f.write("# Define the states\n")
+        f.write("states = [\n")
+        f.write("    {'surgery_status': 'needed'},\n")
+        f.write("    {'surgery_status': 'in_process'},\n")
+        f.write("    {'surgery_status': 'successful'}\n")
+        f.write("]\n\n")
+        f.write("# Define the transitions\n")
+        f.write("transitions = {}\n")
+        f.write("for i in range(len(states)-1):\n")
+        f.write("    state_items = hashable(states[i])\n")
+        f.write("    next_state_items = hashable(states[i+1])\n")
+        f.write("    transitions[state_items] = [(next_state_items, 1.0)]\n\n")
+        f.write("# Create the model\n")
+        f.write("model = Model(states=states, transitions=transitions)\n")
+        f.write("```\n\n")
+
 def log_pobtl_translation(english: str, logic: str) -> None:
+    """Log a temporal logic translation to the requirements file"""
     with open(requirements_file(), "a") as f:
-        f.write("\n<!-- POBTL* Translation -->\n")
+        f.write("\n<!-- Temporal Logic Translation -->\n")
         f.write(f"**English:** {english}\n\n")
-        f.write(f"```pobtl\n{logic}\n```\n")
+        f.write("```temporal\n")
+        f.write(f"{logic}\n")
+        f.write("```\n")
+
+def log_model_visualization(dot_string: str) -> None:
+    """Log the model visualization to the requirements file"""
+    with open(requirements_file(), "a") as f:
+        f.write("\n## Model Visualization\n\n")
+        f.write("![State Machine Model](news-model.png)\n\n")
+        f.write("```dot\n")
+        f.write(dot_string)
+        f.write("\n```\n\n")
 
 def load_readme_context() -> str:
     fullData: Optional[str] = None

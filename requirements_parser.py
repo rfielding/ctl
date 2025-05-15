@@ -121,13 +121,35 @@ class RequirementsParser:
             print(f"🔬 Found {len(temporal_blocks)} temporal logic blocks")
             python_code.append("\n# Temporal logic assertions")
             for i, formula in enumerate(temporal_blocks, 1):
+                # Clean up the formula text
+                formula_lines = [line.strip() for line in formula.strip().split('\n') if line.strip()]
+                
+                # Extract comments
+                comments = [line for line in formula_lines if line.startswith('#')]
+                # Get code lines (non-comments)
+                code_lines = [line for line in formula_lines if not line.startswith('#')]
+                
+                # Print description
+                if comments:
+                    python_code.append(f"\nprint('Formula {i} description:')")
+                    for comment in comments:
+                        python_code.append(f"print('{comment}')")
+                
+                # Add the actual formula evaluation
+                python_code.append(f"\nprint('Evaluating formula {i}:')")
+                
+                # Handle each line of code separately
+                for line in code_lines[:-1]:  # All lines except the last one
+                    python_code.append(line)
+                
+                # The last line should be the actual formula
                 formula_name = f"formula_{i}"
-                result_name = f"result_{i}"
-                python_code.append(f"\nprint('Evaluating formula {i}: {formula.strip()}')")
-                python_code.append(f"{formula_name} = {formula.strip()}")
-                python_code.append(f"{result_name} = [formula_{i}.eval(model, state) for state in model.states]")
-                python_code.append(f"print('Results for all states:', {result_name})")
-                python_code.append(f"for i, (state, result) in enumerate(zip(model.states, {result_name})):")
+                python_code.append(f"{formula_name} = {code_lines[-1]}")
+                
+                # Evaluate the formula
+                python_code.append(f"result_{i} = [{formula_name}.eval(model, state) for state in model.states]")
+                python_code.append(f"print('Results for all states:', result_{i})")
+                python_code.append(f"for i, (state, result) in enumerate(zip(model.states, result_{i})):")
                 python_code.append("    print(f'State {i}: {state}')")
                 python_code.append("    print(f'Result: {result}\\n')")
         
@@ -217,14 +239,25 @@ if __name__ == "__main__":
         print("Failed to parse conversation")
 
     # Create Model for verification (convert MarkovModel to verification Model)
-    states = []
+    states = [
+        {'Actor': 'Google DeepMind', 'creation_start': False, 'AI_exists': False, 'in_progress': False},
+        {'Actor': 'Google DeepMind', 'creation_start': True, 'AI_exists': False, 'in_progress': True},
+        {'Actor': 'Google DeepMind', 'creation_start': True, 'AI_exists': True, 'in_progress': False}
+    ]
+
+    # Define the transitions
     transitions = {}
-    
-    verification_model = Model(states, transitions)
+    for i in range(len(states)-1):
+        state_items = hashable(states[i])
+        next_state_items = hashable(states[i+1])
+        transitions[state_items] = [(next_state_items, 1.0)]
+
+    # Create the model
+    model = Model(states=states, transitions=transitions)
     
     # Verify requirements
     print("\nVerifying requirements against model:")
-    results = verify_requirements(verification_model, conversation.requirements)
+    results = verify_requirements(model, conversation.requirements)
     
     # Print results
     for req_id, satisfied in results.items():
