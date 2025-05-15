@@ -2,7 +2,10 @@
 from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
 import re
-from pobtl_model_checker import *
+from pobtl_model_checker import (
+    Model, AG, EF, AF, EG,
+    And, Or, Not, Implies
+)
 import sys
 
 def markdown_to_python(md_content: str) -> str:
@@ -108,7 +111,6 @@ class RequirementsParser:
         
         try:
             exec(model_code, namespace)
-            # Try to get the model from the namespace
             self.model = namespace.get('model')
             if self.model:
                 print("\nSuccessfully loaded model from code blocks")
@@ -117,37 +119,60 @@ class RequirementsParser:
             self.model = None
         
         # Print and evaluate each POBTL formula
-        if self.model:
-            print("\nPOBTL* Formulas:")
-            for english, formula in pobtl_blocks:
-                print(f"\nRequirement: {english.strip()}")
-                print(f"Formula: {formula.strip()}")
+        print("\n=== Temporal Logic Evaluations ===")
+        for english, formula in pobtl_blocks:
+            print(f"\n📝 Requirement: {english.strip()}")
+            print(f"🔬 Formula: {formula.strip()}")
+            if self.model:
                 try:
                     result = self.model.eval_formula(formula.strip())
-                    print(f"Evaluates to: {result}")
+                    print(f"✅ Evaluates to: {result}")
                 except Exception as e:
-                    print(f"Could not evaluate: {str(e)}")
+                    print(f"❌ Evaluation failed: {str(e)}")
+            else:
+                print("⚠️  No model available for evaluation")
+        print("\n===============================")
+        
+        # Also find and show any temporal logic blocks
+        temporal_blocks = re.findall(r'```temporal\n(.*?)```', content, re.DOTALL)
+        if temporal_blocks:
+            print("\n=== Additional Temporal Logic Blocks ===")
+            for block in temporal_blocks:
+                print(f"\n🔍 Formula: {block.strip()}")
+                if self.model:
+                    try:
+                        result = self.model.eval_formula(block.strip())
+                        print(f"✅ Evaluates to: {result}")
+                    except Exception as e:
+                        print(f"❌ Evaluation failed: {str(e)}")
+                else:
+                    print("⚠️  No model available for evaluation")
+            print("\n===============================")
         
         return Conversation(
             project_name=self.project_name,
             state_machine_code=model_code,
             temporal_logic_blocks=[block[1] for block in pobtl_blocks],
             full_content=content,
-            requirements=[]  # You might want to populate this
+            requirements=[]
         )
     
     def execute_code(self, conversation: Conversation) -> None:
         """Execute the state machine and temporal logic code"""
-        def generate_dot_string(*args, **kwargs):
-            """Stub function that does nothing"""
-            return ""
-        
         namespace = {
             'project_name': conversation.project_name,
             'Requirement': Requirement,
             'MarkovModel': MarkovModel,
             'Model': Model,
-            'generate_dot_string': generate_dot_string  # Add stub function
+            # Add temporal logic operators
+            'AG': AG,
+            'EF': EF,
+            'AF': AF,
+            'EG': EG,
+            'And': And,
+            'Or': Or,
+            'Not': Not,
+            'Implies': Implies,
         }
         
         try:
