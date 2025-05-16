@@ -8,6 +8,7 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from tool_functions import set_project
 from pobtl_model_checker import Model, hashable
+import re
 
 project: str = os.getenv("PROJECT", "default")
 openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
@@ -26,31 +27,10 @@ def append_to_requirements(role: str, message: str) -> None:
         f.write(f"{message.strip()}\n")
 
 def create_requirements_file(project: str) -> None:
-    """Create a new requirements file for the project"""
+    """Initialize empty requirements file"""
     with open(requirements_file(), "w") as f:
         f.write(f"\n## System @ {datetime.now().isoformat()}\n\n")
         f.write(f"Set project to {project}\n\n")
-        
-        # Write initial model definition
-        f.write("```python\n")
-        f.write("# Model Definition\n")
-        f.write("from pobtl_model_checker import Model, hashable, Formula, Prop\n")
-        f.write("from typing import Callable, Dict, Any\n\n")
-        f.write("# Define the states\n")
-        f.write("states = [\n")
-        f.write("    {'surgery_status': 'needed'},\n")
-        f.write("    {'surgery_status': 'in_process'},\n")
-        f.write("    {'surgery_status': 'successful'}\n")
-        f.write("]\n\n")
-        f.write("# Define the transitions\n")
-        f.write("transitions = {}\n")
-        f.write("for i in range(len(states)-1):\n")
-        f.write("    state_items = hashable(states[i])\n")
-        f.write("    next_state_items = hashable(states[i+1])\n")
-        f.write("    transitions[state_items] = [(next_state_items, 1.0)]\n\n")
-        f.write("# Create the model\n")
-        f.write("model = Model(states=states, transitions=transitions)\n")
-        f.write("```\n\n")
 
 def log_pobtl_translation(english: str, logic: str) -> None:
     """Log a temporal logic translation to the requirements file"""
@@ -61,13 +41,23 @@ def log_pobtl_translation(english: str, logic: str) -> None:
         f.write(f"{logic}\n")
         f.write("```\n")
 
-def log_model_visualization(dot_string: str) -> None:
-    """Log the model visualization to the requirements file"""
+def log_model_and_code(model: Model, python_code: str) -> None:
+    """Log visualization and complete model code"""
     with open(requirements_file(), "a") as f:
-        f.write("\n## Model Visualization\n\n")
-        f.write("![State Machine Model](news-model.png)\n\n")
+        # Add visualization
+        f.write("## Model Visualization\n\n")
+        f.write(f"![State Machine Model]({project}-model.png)\n\n")
+        
+        # Add DOT representation
+        dot_string = model_to_dot(model)
         f.write("```dot\n")
         f.write(dot_string)
+        f.write("\n```\n\n")
+        
+        # Always preserve complete model code
+        f.write("## Model Definition\n\n")
+        f.write("```python\n")
+        f.write(python_code)
         f.write("\n```\n\n")
 
 def load_readme_context() -> str:
@@ -124,33 +114,32 @@ def chat() -> None:
 
     readme_context: str = load_readme_context()
     base_prompt: str = (
-        """You are a modal logic and model construction assistant.
+        """You are a modal logic and model construction assistant. 
+        
+        Start by asking the user the name of the project we are working on.
+        Once you know the project name, you can start to persist this conversation into
+        a REQUIREMENTS.md file.
 
-When creating or modifying models, you must ALWAYS create a Markov Chain visualization showing:
-1. States as boxes with their variable assignments (e.g., "x=1\\ny=false")
-2. Transitions with labels showing probability and variable updates (e.g., "0.5: (x:=x+1)")
-3. Use the graphviz_render tool to generate and include the visualization inline
-4. Include probabilities so that we get a valid Markov Chain. Use equal probabilities for state changes when they are unspecified.
+        This file exists so that the content can be reloaded into the chat history.
+        Every prompt and response will have a header that specifies the role (user, assistant, system).
 
-For example, when you create a model, you must:
-1. Define the states and transitions
-2. Create a DOT string showing the Markov Chain
-3. Call graphviz_render with the DOT string
-4. Reference the visualization in your response
-5. The graph must show variable changes on transitions, and must show probabilities on transition.
-6. Put in notes about the probability of being in each state. If there are queue constructs being represented, then put in a note about average queue length.
+        When the system is asked to implement requirements, a Model will be created
+        to model how the world evolves in time, through variable changes with probabilities.
+        From this model, we will generate a png that represents the Markov Chain that
+        temporal logic runs against.
 
-Before translating any requirements into POBTL* formulas, help the user build a discrete-event transition system model in Python. The system will be a Kripke-style state machine where each state is a combination of variable assignments, and each transition is a guarded update with a probability.
-
-Once a model exists, then (and only then) translate user requirements into modal logic assertions using the POBTL* operators:
+        Whenever this model changes, a link to a freshly generated png from dot from the model will be added into this file as an inline image.
+        Then, a single Python code fence that contains all of the model, plus temporal logic assertions will be added.
+        Given this, ./requirements_parser.py should be able to execute this requirements file to check the results.
+ 
+The temporal logic assertions using the POBTL* operators:
 - EF, AG, AF, EG, EP, AH, etc.
 - StrongImplies(p, q) = EF(p) and AG(p -> q)
 
-All logic must be written in fenced Python code blocks using the label `pobtl`, and must be checkable using eval_formula() from the POBTL* library.
-
-Your primary job is to help the user define, simulate, and analyze the logic of their system.
-
-Here is the POBTL* language specification:
+YOU MUST RENDER THE PYTHON CODE FENCE OF THE MODEL WITH ASSERTIONS AND THE PNG;
+Otherwise, the data will just get lost. That is because we are using this markdown file
+as our requirements database.
+This code is what you need to invoke in order to make the Model, and the assertions:
 
 """ + readme_context +
         """
@@ -237,35 +226,31 @@ def graphviz_render(dot_string: str) -> str:
         return f"❌ Failed to render graphviz: {str(e)}"
 
 def model_to_dot(model: Model) -> str:
-    dot = ["digraph G {"]
-    dot.append("  node [shape=record];")
+    """Generate DOT showing state variables and transition details"""
+    dot_lines = ["digraph {"]
+    dot_lines.append("    node [shape=record];")
     
-    # Add all states with their variable assignments
+    # Show all variables in each state
     for i, state in enumerate(model.states):
-        state_label = "\\n".join(f"{k}={v}" for k, v in state.items())
-        dot.append(f'  s{i} [label="{state_label}"];')
+        vars_str = "|".join(f"{k}={v}" for k, v in sorted(state.items()))
+        dot_lines.append(f'    state_{i} [label="{{{vars_str}}}"];')
     
-    # Add transitions with probability and variable updates
+    # Show probabilities and variable changes on transitions
     for i, state in enumerate(model.states):
-        state_items = hashable(state)
-        if state_items in model.transitions:
-            for next_state in model.transitions[state_items]:
-                # Find index of target state
-                target_idx = next(j for j, s in enumerate(model.states) 
-                                if hashable(s) == next_state)
-                # Compare states to show what changed
-                changes = []
-                for k, v in dict(next_state).items():
-                    if k in state and state[k] != v:
-                        changes.append(f"{k}:={v}")
-                change_label = ", ".join(changes) if changes else ""
-                if change_label:
-                    dot.append(f'  s{i} -> s{target_idx} [label="{change_label}"];')
-                else:
-                    dot.append(f"  s{i} -> s{target_idx};")
+        state_hash = hashable(state)
+        if state_hash in model.transitions:
+            for next_state_hash, prob in model.transitions[state_hash]:
+                for j, next_state in enumerate(model.states):
+                    if hashable(next_state) == next_state_hash:
+                        changes = []
+                        for var in state:
+                            if state[var] != next_state[var]:
+                                changes.append(f"{var}:={next_state[var]}")
+                        change_str = ", ".join(changes) if changes else "no changes"
+                        dot_lines.append(f'    state_{i} -> state_{j} [label="p={prob:.1f}\n{change_str}"];')
     
-    dot.append("}")
-    return "\n".join(dot)
+    dot_lines.append("}")
+    return "\n".join(dot_lines)
 
 if __name__ == "__main__":
     chat()
