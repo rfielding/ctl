@@ -1,6 +1,6 @@
 """
-Z3-Native Message Passing Markov Chain Model Runner
-Complete example showing how to encode and verify business properties
+Z3-Native Message Passing Markov Chain Model Runner - FIXED VERSION
+Complete working example with proper probabilistic modeling
 """
 
 from z3 import *
@@ -14,9 +14,9 @@ def channel_var(actor, channel, field, time):
     """Create time-indexed channel variable"""
     return Int(f"{actor}_{channel}_{field}_{time}")
 
-def prob_var(actor, state, time):
-    """Create probability variable"""
-    return Real(f"{actor}_prob_{state}_{time}")
+def random_var(name, time):
+    """Create random variable for probabilistic choice"""
+    return Real(f"random_{name}_{time}")
 
 def create_bakery_system_z3(time_horizon=15):
     """Create complete bakery system in Z3 constraints"""
@@ -43,11 +43,15 @@ def create_bakery_system_z3(time_horizon=15):
         delivery_queue_next = channel_var("Shop", "delivery", "size", t+1)
         delivery_capacity = 5
         
-        # Probability variables
-        prob_produce = prob_var("Baker", "produce", t)
-        prob_stay_idle = prob_var("Baker", "idle", t)
-        prob_sell = prob_var("Shop", "sell", t)
-        prob_no_customer = prob_var("Shop", "no_customer", t)
+        # Random variables for probabilistic choices
+        random_produce = random_var("produce", t)
+        random_sell = random_var("sell", t)
+        
+        # Random variables are between 0 and 1
+        constraints.extend([
+            random_produce >= 0, random_produce <= 1,
+            random_sell >= 0, random_sell <= 1,
+        ])
         
         # State predicates
         baker_idle = (baker_status == 0)
@@ -60,58 +64,51 @@ def create_bakery_system_z3(time_horizon=15):
         can_deliver = And(baker_delivering, shop_can_receive)
         delivery_happens = And(can_deliver, delivery_queue < delivery_capacity)
         
-        # Probability constraints
-        constraints.extend([
-            # Probabilities sum to 1 and are non-negative
-            prob_produce + prob_stay_idle == 1.0,
-            prob_produce >= 0, prob_stay_idle >= 0,
-            prob_sell + prob_no_customer == 1.0, 
-            prob_sell >= 0, prob_no_customer >= 0,
-            
-            # Set realistic probability values
-            prob_produce == 0.8,  # 80% chance baker produces
-            prob_sell == 0.6,     # 60% chance of sale when inventory available
-        ])
-        
         # Baker state transitions
         constraints.extend([
-            # Idle → Producing (with probability)
-            Implies(And(baker_idle, prob_produce >= 0.8),
-                   And(baker_status_next == 1, dough_ready_next == dough_ready + 20)),
+            # Idle → Producing (SLOWER PRODUCTION: 30% chance instead of 60%)
+            Implies(And(baker_idle, random_produce < 0.3),  # Changed from 0.6 to 0.3
+                   And(baker_status_next == 1, dough_ready_next == dough_ready + 5)),  # Smaller batches
             
-            # Idle → Stay Idle
-            Implies(And(baker_idle, prob_produce < 0.8), 
+            # Idle → Stay Idle (70% chance: random >= 0.3)
+            Implies(And(baker_idle, random_produce >= 0.3),  # Changed from 0.6 to 0.3
                    And(baker_status_next == 0, dough_ready_next == dough_ready)),
             
-            # Producing → Delivering (when dough ready)
-            Implies(And(baker_producing, dough_ready >= 20),
+            # Producing → Delivering (when dough ready) 
+            Implies(And(baker_producing, dough_ready >= 5),  # Changed from 20 to 5
                    And(baker_status_next == 2, dough_ready_next == dough_ready)),
             
             # Producing → Keep Producing (when dough not ready)
-            Implies(And(baker_producing, dough_ready < 20),
-                   And(baker_status_next == 1, dough_ready_next == dough_ready + 10)),
+            Implies(And(baker_producing, dough_ready < 5),   # Changed from 20 to 5
+                   And(baker_status_next == 1, dough_ready_next == dough_ready + 5)),  # Smaller increments
             
-            # Delivering → Idle (after delivery)
+            # Delivering → Idle (after delivery attempt)
             Implies(baker_delivering,
                    And(baker_status_next == 0, dough_ready_next == 0))
         ])
         
         # Shop state transitions
         constraints.extend([
-            # Receive delivery
+            # Receive delivery when baker delivers (SMALLER BATCHES)
             Implies(delivery_happens,
-                   And(inventory_next == inventory + 20,
+                   And(inventory_next == inventory + 5,  # Changed from 20 to 5 loaves per delivery
                        delivery_queue_next == delivery_queue + 1,
                        sales_today_next == sales_today)),
             
-            # Make sale (when inventory available and customer arrives)
-            Implies(And(shop_has_inventory, prob_sell >= 0.6, Not(delivery_happens)),
-                   And(inventory_next == inventory - 1,
+            # Make MULTIPLE sales per time step (HIGH CUSTOMER TRAFFIC)
+            Implies(And(shop_has_inventory, inventory >= 3, random_sell < 0.9, Not(delivery_happens)),
+                   And(inventory_next == inventory - 3,  # Sell 3 loaves at once
+                       sales_today_next == sales_today + 3,  # Count 3 sales
+                       delivery_queue_next == delivery_queue)),
+            
+            # Make single sale (MEDIUM CUSTOMER TRAFFIC) 
+            Implies(And(shop_has_inventory, inventory < 3, random_sell < 0.9, Not(delivery_happens)),
+                   And(inventory_next == inventory - 1,  # Sell 1 loaf
                        sales_today_next == sales_today + 1,
                        delivery_queue_next == delivery_queue)),
             
-            # No sale (no customer or no inventory)
-            Implies(And(Or(Not(shop_has_inventory), prob_sell < 0.6), Not(delivery_happens)),
+            # No sale (10% chance: random >= 0.9, or no inventory)
+            Implies(And(Or(Not(shop_has_inventory), random_sell >= 0.9), Not(delivery_happens)),
                    And(inventory_next == inventory,
                        sales_today_next == sales_today,
                        delivery_queue_next == delivery_queue))
@@ -151,7 +148,7 @@ def check_eventually_profitable(constraints, time_horizon=15):
         for t in range(time_horizon)
     ])
     
-    # Try to find counter-example
+    # Try to find counter-example (path where sales never exceed 10)
     solver.push()
     solver.add(Not(eventually_profitable))
     
@@ -235,16 +232,19 @@ def print_counter_example(model, time_horizon):
     """Print execution trace that violates profitability"""
     print("   Execution trace showing why shop never becomes profitable:")
     for t in range(min(10, time_horizon)):  # Show first 10 steps
-        baker_status = model.eval(state_var("Baker", "status", t))
-        inventory = model.eval(state_var("Shop", "inventory", t)) 
-        sales = model.eval(state_var("Shop", "sales", t))
-        print(f"   t={t}: Baker={baker_status}, Inventory={inventory}, Sales={sales}")
+        baker_status = model.eval(state_var("Baker", "status", t), model_completion=True)
+        inventory = model.eval(state_var("Shop", "inventory", t), model_completion=True) 
+        sales = model.eval(state_var("Shop", "sales", t), model_completion=True)
+        dough = model.eval(state_var("Baker", "dough_ready", t), model_completion=True)
+        
+        baker_state_name = ["Idle", "Producing", "Delivering"][baker_status.as_long()]
+        print(f"   t={t}: Baker={baker_state_name}, Dough={dough}, Inventory={inventory}, Sales={sales}")
 
 def print_safety_violation(model, time_horizon):
     """Print the point where safety property is violated"""
     print("   Execution trace showing inventory overflow:")
     for t in range(time_horizon):
-        inventory = model.eval(state_var("Shop", "inventory", t))
+        inventory = model.eval(state_var("Shop", "inventory", t), model_completion=True)
         if inventory.as_long() > 100:
             print(f"   t={t}: VIOLATION - Inventory={inventory} > 100")
             break
@@ -254,10 +254,10 @@ def print_execution_trace(model, time_horizon, focus=None):
     """Print a sample execution trace"""
     print("   Sample execution trace:")
     for t in range(min(8, time_horizon)):
-        baker_status = model.eval(state_var("Baker", "status", t))
-        dough = model.eval(state_var("Baker", "dough_ready", t))
-        inventory = model.eval(state_var("Shop", "inventory", t))
-        sales = model.eval(state_var("Shop", "sales", t))
+        baker_status = model.eval(state_var("Baker", "status", t), model_completion=True)
+        dough = model.eval(state_var("Baker", "dough_ready", t), model_completion=True)
+        inventory = model.eval(state_var("Shop", "inventory", t), model_completion=True)
+        sales = model.eval(state_var("Shop", "sales", t), model_completion=True)
         
         baker_state_name = ["Idle", "Producing", "Delivering"][baker_status.as_long()]
         
@@ -265,6 +265,25 @@ def print_execution_trace(model, time_horizon, focus=None):
             print(f"   t={t}: 🚚 Baker={baker_state_name}, Dough={dough}, Inventory={inventory}, Sales={sales}")
         else:
             print(f"   t={t}: Baker={baker_state_name}, Dough={dough}, Inventory={inventory}, Sales={sales}")
+
+def debug_constraints(constraints):
+    """Debug helper to check if constraints are satisfiable"""
+    print("\n=== Debugging: Checking constraint satisfiability ===")
+    solver = Solver()
+    solver.add(constraints)
+    
+    result = solver.check()
+    if result == sat:
+        print("✅ Constraints are satisfiable")
+        model = solver.model()
+        print("Sample initial state:")
+        print(f"  Baker status: {model.eval(state_var('Baker', 'status', 0))}")
+        print(f"  Baker dough: {model.eval(state_var('Baker', 'dough_ready', 0))}")
+        print(f"  Shop inventory: {model.eval(state_var('Shop', 'inventory', 0))}")
+        return True
+    else:
+        print("❌ Constraints are unsatisfiable - model has logical errors!")
+        return False
 
 def main():
     """Main execution function"""
@@ -275,6 +294,11 @@ def main():
     time_horizon = 12
     constraints = create_bakery_system_z3(time_horizon)
     print(f"Created system with {len(constraints)} constraints")
+    
+    # Debug check
+    if not debug_constraints(constraints):
+        print("❌ Cannot proceed - fix model constraints first!")
+        return
     
     # Run verification checks
     results = {}
