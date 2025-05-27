@@ -232,9 +232,17 @@ class Actor:
                             all_actors[op.recipient].variables[op.variable_name] = actual_value
                             
                         print(f"    -> {self.name} sent {actual_value} to {op.recipient}")
+                        
+                        # Extra debug for truck deliveries
+                        if self.name == "Truck" and op.channel_name == "bread_to_store":
+                            print(f"    -> DEBUG: Truck delivery SUCCESS! Channel capacity: {channel.capacity}")
                     else:
                         self.blocked = True
                         print(f"    -> {self.name} BLOCKED sending to {op.recipient}")
+                        
+                        # Extra debug for truck delivery failures
+                        if self.name == "Truck" and op.channel_name == "bread_to_store":
+                            print(f"    -> DEBUG: Truck delivery BLOCKED! Channel status: {channel.get_status()}")
                         
             elif isinstance(self.current_state.channel_op, ReceiveOperation):
                 op = self.current_state.channel_op
@@ -461,6 +469,7 @@ def create_bakery_business() -> Model:
     
     def deliver_bread_action(variables):
         cargo = variables.get('cargo', [])
+        print(f"    -> DEBUG: Truck attempting delivery, cargo: {len(cargo)} items")
         if cargo:
             bread = cargo.pop(0)  # Deliver oldest bread first
             variables['deliveries_made'] = variables.get('deliveries_made', 0) + 1
@@ -482,11 +491,11 @@ def create_bakery_business() -> Model:
                             channel_op=SendOperation("bread_to_store", "Store", 
                                                     "delivering_bread", "bread_delivery"))
     
-    # Truck transitions - cycles between loading and delivering
-    truck_waiting.transitions = [(0.6, truck_loading), (0.4, truck_waiting)]
+    # Truck transitions - more deterministic delivery cycle
+    truck_waiting.transitions = [(0.8, truck_loading), (0.2, truck_waiting)]
     truck_loading.transitions = [(0.3, truck_traveling), (0.7, truck_loading)]  # Stay to load more
-    truck_traveling.transitions = [(1.0, truck_delivering)]
-    truck_delivering.transitions = [(0.8, truck_waiting), (0.2, truck_traveling)]  # Sometimes make multiple deliveries
+    truck_traveling.transitions = [(1.0, truck_delivering)]  # Always go to delivering
+    truck_delivering.transitions = [(1.0, truck_waiting)]  # Always return to waiting after delivery attempt
     
     # === STORE ACTOR ===
     # Receives bread deliveries, stocks shelves, serves customers
@@ -529,10 +538,10 @@ def create_bakery_business() -> Model:
                          channel_op=ReceiveOperation("customer_orders", "customer_payment"))
     store_cleaning = State("cleaning")
     
-    # Store transitions - balances stocking and serving
-    store_open.transitions = [(0.4, store_stocking), (0.4, store_serving), (0.2, store_cleaning)]
-    store_stocking.transitions = [(0.6, store_open), (0.4, store_serving)]
-    store_serving.transitions = [(0.7, store_open), (0.3, store_stocking)]
+    # Store transitions - balances stocking and serving, prioritizes stocking when empty
+    store_open.transitions = [(0.5, store_stocking), (0.3, store_serving), (0.2, store_cleaning)]
+    store_stocking.transitions = [(0.4, store_open), (0.6, store_serving)]
+    store_serving.transitions = [(0.5, store_open), (0.5, store_stocking)]
     store_cleaning.transitions = [(1.0, store_open)]
     
     # === CUSTOMER ACTOR ===
@@ -710,44 +719,52 @@ def generate_interaction_diagram(model: Model, history: List[Dict[str, Any]], ma
     
     mermaid.append("")
     
-    # Extract actual message flows from the simulation history
+    # Look for evidence of successful message transfers in the history
     messages = []
     
-    for i, snapshot in enumerate(history[:max_steps]):
+    for i, snapshot in enumerate(history):
         timestep = snapshot['timestep']
         actors = snapshot['actors']
         
-        # Look for actors that just completed send operations
+        # Look for variable changes that indicate message receipt
         for actor_name, actor_data in actors.items():
-            state_name = actor_data['state']
             variables = actor_data['variables']
             
-            # Check if this actor has a send operation in current state
-            if actor_name in model.actors:
-                actor = model.actors[actor_name]
-                current_state = None
-                for state in actor.states:
-                    if state.name == state_name:
-                        current_state = state
-                        break
+            # Check for Truck receiving bread (loads_received increased)
+            if actor_name == "Truck" and variables.get('loads_received', 0) > 0:
+                # This timestep shows a bread delivery to truck
+                if i == 0 or variables.get('loads_received', 0) > history[i-1]['actors'].get('Truck', {}).get('variables', {}).get('loads_received', 0):
+                    messages.append({
+                        'step': timestep,
+                        'from': 'Bakery',
+                        'to': 'Truck',
+                        'message': 'bread_to_truck bread'
+                    })
+            
+            # Check for Store receiving deliveries (items_stocked increased)
+            if actor_name == "Store" and variables.get('items_stocked', 0) > 0:
+                if i == 0 or variables.get('items_stocked', 0) > history[i-1]['actors'].get('Store', {}).get('variables', {}).get('items_stocked', 0):
+                    messages.append({
+                        'step': timestep,
+                        'from': 'Truck',
+                        'to': 'Store',
+                        'message': 'bread_to_store delivery'
+                    })
+            
+            # Check for Store receiving payments (customer_payment variable exists)
+            if actor_name == "Store" and 'customer_payment' in variables:
+                # Check if this is a new payment
+                prev_payment = None
+                if i > 0:
+                    prev_payment = history[i-1]['actors'].get('Store', {}).get('variables', {}).get('customer_payment')
                 
-                if current_state and current_state.channel_op:
-                    if isinstance(current_state.channel_op, SendOperation):
-                        op = current_state.channel_op
-                        # Create a simple message description
-                        if isinstance(op.value, dict):
-                            msg_desc = f"{op.channel_name} bread"
-                        elif isinstance(op.value, str) and op.value in variables:
-                            msg_desc = f"{op.channel_name} payment"
-                        else:
-                            msg_desc = f"{op.channel_name} msg"
-                        
-                        messages.append({
-                            'step': timestep,
-                            'from': actor_name,
-                            'to': op.recipient,
-                            'message': msg_desc
-                        })
+                if prev_payment != variables.get('customer_payment'):
+                    messages.append({
+                        'step': timestep,
+                        'from': 'Customer',
+                        'to': 'Store',
+                        'message': f"customer_orders ${variables.get('customer_payment', 0)}"
+                    })
     
     # Remove duplicates and sort by step
     seen = set()
@@ -761,14 +778,13 @@ def generate_interaction_diagram(model: Model, history: List[Dict[str, Any]], ma
     unique_messages.sort(key=lambda x: x['step'])
     
     # Generate sequence diagram
-    for msg in unique_messages[:20]:  # Limit to first 20 messages
+    for msg in unique_messages:
         mermaid.append(f"    {msg['from']}->>{msg['to']}: Step {msg['step']}: {msg['message']}")
     
     if unique_messages:
-        # Use individual notes instead of spanning multiple actors
-        mermaid.append(f"    Note right of {actor_names[0]}: Business process message flow")
+        mermaid.append(f"    Note right of {actor_names[0]}: {len(unique_messages)} messages detected")
     else:
-        mermaid.append(f"    Note right of {actor_names[0]}: No messages captured in this run")
+        mermaid.append(f"    Note right of {actor_names[0]}: No message transfers detected")
     
     return "\n".join(mermaid)
 
