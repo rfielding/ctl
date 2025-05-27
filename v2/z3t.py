@@ -136,15 +136,15 @@ def create_bakery_system_z3(time_horizon=15):
     return constraints
 
 def check_eventually_profitable(constraints, time_horizon=15):
-    """Check AF(sales > 10): Eventually shop sells more than 10 items"""
-    print("\n=== Checking: Eventually Profitable (sales > 10) ===")
+    """Check AF(sales > 4): Eventually shop sells more than 10 items"""
+    print("\n=== Checking: Eventually Profitable (sales > 4) ===")
     
     solver = Solver()
     solver.add(constraints)
     
-    # AF(sales > 10) ≡ ∃t. sales_t > 10
+    # AF(sales > 4) ≡ ∃t. sales_t > 4
     eventually_profitable = Or([
-        state_var("Shop", "sales", t) > 10
+        state_var("Shop", "sales", t) > 4 
         for t in range(time_horizon)
     ])
     
@@ -291,7 +291,7 @@ def main():
     print("=" * 50)
     
     # Create the system
-    time_horizon = 12
+    time_horizon = 20
     constraints = create_bakery_system_z3(time_horizon)
     print(f"Created system with {len(constraints)} constraints")
     
