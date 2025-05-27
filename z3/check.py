@@ -765,9 +765,10 @@ def generate_interaction_diagram(model: Model, history: List[Dict[str, Any]], ma
         mermaid.append(f"    {msg['from']}->>{msg['to']}: Step {msg['step']}: {msg['message']}")
     
     if unique_messages:
-        mermaid.append(f"    Note over {','.join(actor_names)}: Business process message flow")
+        # Use individual notes instead of spanning multiple actors
+        mermaid.append(f"    Note right of {actor_names[0]}: Business process message flow")
     else:
-        mermaid.append(f"    Note over {','.join(actor_names)}: No messages captured in this run")
+        mermaid.append(f"    Note right of {actor_names[0]}: No messages captured in this run")
     
     return "\n".join(mermaid)
 
