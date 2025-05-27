@@ -30,267 +30,305 @@ Final state: {'ActorA': 'sending', 'ActorB': 'waiting'}
 Initial state: {'Bakery': 'idle', 'Truck': 'waiting', 'Store': 'open', 'Customer': 'away'}
 
 === TIMESTEP 1 ===
-Bakery: idle (stayed) | Variables: {'breads_baked': 0, 'production_value': 0}
+Bakery: idle -> baking_apple | Variables: {'breads_baked': 0, 'production_value': 0}
 Truck: waiting -> loading | Variables: {'cargo': [], 'loads_received': 0, 'deliveries_made': 0}
 Store: open -> stocking | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
-Customer: away (stayed) | Variables: {'purchases_attempted': 0, 'money_spent': 0}
-
-=== TIMESTEP 2 ===
-Bakery: idle -> baking_sourdough | Variables: {'breads_baked': 0, 'production_value': 0}
-    -> Truck BLOCKED waiting to receive
-Truck: loading (stayed) [BLOCKED] | Variables: {'cargo': [], 'loads_received': 0, 'deliveries_made': 0}
-    -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
-Customer: away (stayed) | Variables: {'purchases_attempted': 0, 'money_spent': 0}
-
-=== TIMESTEP 3 ===
-    -> Bakery baked Sourdough ($10)
-    -> Bakery sent {'type': 'Sourdough', 'price': 10} to Truck
-Bakery: baking_sourdough -> idle | Variables: {'breads_baked': 1, 'production_value': 10}
-    -> Truck received {'type': 'Sourdough', 'price': 10} into bread
-Truck: loading (stayed) | Variables: {'cargo': [], 'loads_received': 0, 'deliveries_made': 0, 'bread': {'type': 'Sourdough', 'price': 10}}
-    -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
-Customer: away (stayed) | Variables: {'purchases_attempted': 0, 'money_spent': 0}
-
-=== TIMESTEP 4 ===
-Bakery: idle -> baking_rye | Variables: {'breads_baked': 1, 'production_value': 10}
-    -> Truck loaded Sourdough bread
-    -> Truck BLOCKED waiting to receive
-Truck: loading (stayed) [BLOCKED] | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}], 'loads_received': 1, 'deliveries_made': 0, 'bread': {'type': 'Sourdough', 'price': 10}}
-    -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
-Customer: away (stayed) | Variables: {'purchases_attempted': 0, 'money_spent': 0}
-
-=== TIMESTEP 5 ===
-    -> Bakery baked Rye ($12)
-    -> Bakery sent {'type': 'Rye', 'price': 12} to Truck
-Bakery: baking_rye -> idle | Variables: {'breads_baked': 2, 'production_value': 22}
-    -> Truck received {'type': 'Rye', 'price': 12} into bread
-Truck: loading -> traveling | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}], 'loads_received': 1, 'deliveries_made': 0, 'bread': {'type': 'Rye', 'price': 12}}
-    -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
-Customer: away (stayed) | Variables: {'purchases_attempted': 0, 'money_spent': 0}
-
-=== TIMESTEP 6 ===
-Bakery: idle (stayed) | Variables: {'breads_baked': 2, 'production_value': 22}
-Truck: traveling -> delivering | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}], 'loads_received': 1, 'deliveries_made': 0, 'bread': {'type': 'Rye', 'price': 12}}
-    -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
 Customer: away -> shopping | Variables: {'purchases_attempted': 0, 'money_spent': 0}
 
-=== TIMESTEP 7 ===
-Bakery: idle -> baking_apple | Variables: {'breads_baked': 2, 'production_value': 22}
-    -> DEBUG: Truck attempting delivery, cargo: 1 items
-    -> Truck delivering Sourdough to store
-    -> DEBUG: Resolved 'delivering_bread' to {'type': 'Sourdough', 'price': 10}
-    -> Truck sent {'type': 'Sourdough', 'price': 10} to Store
-    -> DEBUG: Truck delivery SUCCESS! Channel capacity: 3
-Truck: delivering -> waiting | Variables: {'cargo': [], 'loads_received': 1, 'deliveries_made': 1, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
-    -> Store received {'type': 'Sourdough', 'price': 10} into bread_delivery
-Store: stocking -> open | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Sourdough', 'price': 10}}
-    -> Customer attempting to buy bread with $20
-    -> DEBUG: Resolved 'current_payment' to 20
-    -> Customer sent 20 to Store
-Customer: shopping -> leaving | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
-
-=== TIMESTEP 8 ===
+=== TIMESTEP 2 ===
     -> Bakery baked Apple ($15)
     -> Bakery sent {'type': 'Apple', 'price': 15} to Truck
-Bakery: baking_apple -> idle | Variables: {'breads_baked': 3, 'production_value': 37}
-Truck: waiting (stayed) | Variables: {'cargo': [], 'loads_received': 1, 'deliveries_made': 1, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
-Store: open -> stocking | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Sourdough', 'price': 10}}
-Customer: leaving -> away | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
-
-=== TIMESTEP 9 ===
-Bakery: idle -> baking_rye | Variables: {'breads_baked': 3, 'production_value': 37}
-Truck: waiting -> loading | Variables: {'cargo': [], 'loads_received': 1, 'deliveries_made': 1, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
-    -> DEBUG: Store received bread_delivery: {'type': 'Sourdough', 'price': 10} (type: <class 'dict'>)
-    -> Store stocked Sourdough on shelves
-    -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}], 'items_stocked': 1, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Sourdough', 'price': 10}}
-Customer: away (stayed) | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
-
-=== TIMESTEP 10 ===
-    -> Bakery baked Rye ($12)
-    -> Bakery sent {'type': 'Rye', 'price': 12} to Truck
-Bakery: baking_rye -> baking_apple | Variables: {'breads_baked': 4, 'production_value': 49}
-    -> Truck loaded Rye bread
+Bakery: baking_apple -> idle | Variables: {'breads_baked': 1, 'production_value': 15}
     -> Truck received {'type': 'Apple', 'price': 15} into bread
-Truck: loading -> traveling | Variables: {'cargo': [{'type': 'Rye', 'price': 12}], 'loads_received': 2, 'deliveries_made': 1, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
+Truck: loading (stayed) | Variables: {'cargo': [], 'loads_received': 0, 'deliveries_made': 0, 'bread': {'type': 'Apple', 'price': 15}}
     -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}], 'items_stocked': 1, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Sourdough', 'price': 10}}
-Customer: away (stayed) | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
+Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
+    -> Customer attempting to buy bread with $12 (attempt #1)
+    -> DEBUG: Resolved 'current_payment' to 12
+    -> Customer sent 12 to Store
+Customer: shopping -> leaving | Variables: {'purchases_attempted': 1, 'money_spent': 12, 'current_payment': 12}
 
-=== TIMESTEP 11 ===
-    -> Bakery baked Apple ($15)
-    -> Bakery sent {'type': 'Apple', 'price': 15} to Truck
-Bakery: baking_apple -> idle | Variables: {'breads_baked': 5, 'production_value': 64}
-Truck: traveling -> delivering | Variables: {'cargo': [{'type': 'Rye', 'price': 12}], 'loads_received': 2, 'deliveries_made': 1, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
-    -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}], 'items_stocked': 1, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Sourdough', 'price': 10}}
-Customer: away (stayed) | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
-
-=== TIMESTEP 12 ===
-Bakery: idle -> baking_rye | Variables: {'breads_baked': 5, 'production_value': 64}
-    -> DEBUG: Truck attempting delivery, cargo: 1 items
-    -> Truck delivering Rye to store
-    -> DEBUG: Resolved 'delivering_bread' to {'type': 'Rye', 'price': 12}
-    -> Truck sent {'type': 'Rye', 'price': 12} to Store
-    -> DEBUG: Truck delivery SUCCESS! Channel capacity: 3
-Truck: delivering -> waiting | Variables: {'cargo': [], 'loads_received': 2, 'deliveries_made': 2, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Rye', 'price': 12}}
-    -> Store received {'type': 'Rye', 'price': 12} into bread_delivery
-Store: stocking -> serving | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}], 'items_stocked': 1, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Rye', 'price': 12}}
-Customer: away (stayed) | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
-
-=== TIMESTEP 13 ===
-    -> Bakery baked Rye ($12)
-    -> Bakery BLOCKED sending to Truck
-Bakery: baking_rye (stayed) [BLOCKED] | Variables: {'breads_baked': 6, 'production_value': 76}
-Truck: waiting -> loading | Variables: {'cargo': [], 'loads_received': 2, 'deliveries_made': 2, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Rye', 'price': 12}}
-    -> Store received 20 into customer_payment
-Store: serving -> open | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}], 'items_stocked': 1, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Rye', 'price': 12}, 'customer_payment': 20}
-Customer: away (stayed) | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
-
-=== TIMESTEP 14 ===
-    -> Bakery BLOCKED sending to Truck
-Bakery: baking_rye (stayed) [BLOCKED] | Variables: {'breads_baked': 6, 'production_value': 76}
+=== TIMESTEP 3 ===
+Bakery: idle -> baking_sourdough | Variables: {'breads_baked': 1, 'production_value': 15}
     -> Truck loaded Apple bread
-    -> Truck received {'type': 'Rye', 'price': 12} into bread
-Truck: loading -> traveling | Variables: {'cargo': [{'type': 'Apple', 'price': 15}], 'loads_received': 3, 'deliveries_made': 2, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Rye', 'price': 12}}
-Store: open -> stocking | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}], 'items_stocked': 1, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Rye', 'price': 12}, 'customer_payment': 20}
-Customer: away (stayed) | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
-
-=== TIMESTEP 15 ===
-    -> Bakery sent {'type': 'Rye', 'price': 12} to Truck
-Bakery: baking_rye -> idle | Variables: {'breads_baked': 6, 'production_value': 76}
-Truck: traveling -> delivering | Variables: {'cargo': [{'type': 'Apple', 'price': 15}], 'loads_received': 3, 'deliveries_made': 2, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Rye', 'price': 12}}
-    -> DEBUG: Store received bread_delivery: {'type': 'Rye', 'price': 12} (type: <class 'dict'>)
-    -> Store stocked Rye on shelves
+    -> Truck BLOCKED waiting to receive
+Truck: loading (stayed) [BLOCKED] | Variables: {'cargo': [{'type': 'Apple', 'price': 15}], 'loads_received': 1, 'deliveries_made': 0, 'bread': {'type': 'Apple', 'price': 15}}
     -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}], 'items_stocked': 2, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Rye', 'price': 12}, 'customer_payment': 20}
-Customer: away (stayed) | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
+Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
+Customer: leaving -> away | Variables: {'purchases_attempted': 1, 'money_spent': 12, 'current_payment': 12}
 
-=== TIMESTEP 16 ===
-Bakery: idle -> baking_apple | Variables: {'breads_baked': 6, 'production_value': 76}
+=== TIMESTEP 4 ===
+    -> Bakery baked Sourdough ($10)
+    -> Bakery sent {'type': 'Sourdough', 'price': 10} to Truck
+Bakery: baking_sourdough -> idle | Variables: {'breads_baked': 2, 'production_value': 25}
+    -> Truck received {'type': 'Sourdough', 'price': 10} into bread
+Truck: loading -> traveling | Variables: {'cargo': [{'type': 'Apple', 'price': 15}], 'loads_received': 1, 'deliveries_made': 0, 'bread': {'type': 'Sourdough', 'price': 10}}
+    -> Store BLOCKED waiting to receive
+Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
+Customer: away -> shopping | Variables: {'purchases_attempted': 1, 'money_spent': 12, 'current_payment': 12}
+
+=== TIMESTEP 5 ===
+Bakery: idle -> baking_sourdough | Variables: {'breads_baked': 2, 'production_value': 25}
+Truck: traveling -> delivering | Variables: {'cargo': [{'type': 'Apple', 'price': 15}], 'loads_received': 1, 'deliveries_made': 0, 'bread': {'type': 'Sourdough', 'price': 10}}
+    -> Store BLOCKED waiting to receive
+Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
+    -> Customer attempting to buy bread with $12 (attempt #2)
+    -> DEBUG: Resolved 'current_payment' to 12
+    -> Customer sent 12 to Store
+Customer: shopping -> leaving | Variables: {'purchases_attempted': 2, 'money_spent': 24, 'current_payment': 12}
+
+=== TIMESTEP 6 ===
+    -> Bakery baked Sourdough ($10)
+    -> Bakery sent {'type': 'Sourdough', 'price': 10} to Truck
+Bakery: baking_sourdough -> idle | Variables: {'breads_baked': 3, 'production_value': 35}
     -> DEBUG: Truck attempting delivery, cargo: 1 items
     -> Truck delivering Apple to store
     -> DEBUG: Resolved 'delivering_bread' to {'type': 'Apple', 'price': 15}
     -> Truck sent {'type': 'Apple', 'price': 15} to Store
     -> DEBUG: Truck delivery SUCCESS! Channel capacity: 3
-Truck: delivering -> waiting | Variables: {'cargo': [], 'loads_received': 3, 'deliveries_made': 3, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+Truck: delivering -> waiting | Variables: {'cargo': [], 'loads_received': 1, 'deliveries_made': 1, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
     -> Store received {'type': 'Apple', 'price': 15} into bread_delivery
-Store: stocking -> open | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}], 'items_stocked': 2, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 20}
-Customer: away (stayed) | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
+Store: stocking -> serving | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}}
+Customer: leaving -> away | Variables: {'purchases_attempted': 2, 'money_spent': 24, 'current_payment': 12}
+
+=== TIMESTEP 7 ===
+Bakery: idle -> baking_apple | Variables: {'breads_baked': 3, 'production_value': 35}
+Truck: waiting (stayed) | Variables: {'cargo': [], 'loads_received': 1, 'deliveries_made': 1, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+    -> DEBUG: Store serving, inventory: 0 items
+    -> Store idle - no inventory, no customers
+    -> Store received 12 into customer_payment
+    -> DEBUG: Store received payment $12, inventory: 0 items
+Store: serving (stayed) | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 12}
+Customer: away -> shopping | Variables: {'purchases_attempted': 2, 'money_spent': 24, 'current_payment': 12}
+
+=== TIMESTEP 8 ===
+    -> Bakery baked Apple ($15)
+    -> Bakery sent {'type': 'Apple', 'price': 15} to Truck
+Bakery: baking_apple -> idle | Variables: {'breads_baked': 4, 'production_value': 50}
+Truck: waiting -> loading | Variables: {'cargo': [], 'loads_received': 1, 'deliveries_made': 1, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+    -> DEBUG: Store serving, inventory: 0 items
+    -> Store has no bread to sell (customer disappointed)
+    -> Store received 12 into customer_payment
+    -> DEBUG: Store received payment $12, inventory: 0 items
+Store: serving (stayed) | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 12}
+    -> Customer attempting to buy bread with $10 (attempt #3)
+    -> DEBUG: Resolved 'current_payment' to 10
+    -> Customer sent 10 to Store
+Customer: shopping -> leaving | Variables: {'purchases_attempted': 3, 'money_spent': 34, 'current_payment': 10}
+
+=== TIMESTEP 9 ===
+Bakery: idle -> baking_rye | Variables: {'breads_baked': 4, 'production_value': 50}
+    -> Truck loaded Sourdough bread
+    -> Truck received {'type': 'Sourdough', 'price': 10} into bread
+Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}], 'loads_received': 2, 'deliveries_made': 1, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+    -> DEBUG: Store serving, inventory: 0 items
+    -> Store has no bread to sell (customer disappointed)
+    -> Store received 10 into customer_payment
+    -> DEBUG: Store received payment $10, inventory: 0 items
+Store: serving -> open | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 10}
+Customer: leaving -> away | Variables: {'purchases_attempted': 3, 'money_spent': 34, 'current_payment': 10}
+
+=== TIMESTEP 10 ===
+    -> Bakery baked Rye ($12)
+    -> Bakery sent {'type': 'Rye', 'price': 12} to Truck
+Bakery: baking_rye -> idle | Variables: {'breads_baked': 5, 'production_value': 62}
+    -> Truck loaded Sourdough bread
+    -> Truck received {'type': 'Apple', 'price': 15} into bread
+Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}], 'loads_received': 3, 'deliveries_made': 1, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+Store: open -> serving | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 10}
+Customer: away -> shopping | Variables: {'purchases_attempted': 3, 'money_spent': 34, 'current_payment': 10}
+
+=== TIMESTEP 11 ===
+Bakery: idle -> baking_sourdough | Variables: {'breads_baked': 5, 'production_value': 62}
+    -> Truck loaded Apple bread
+    -> Truck received {'type': 'Rye', 'price': 12} into bread
+Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}], 'loads_received': 4, 'deliveries_made': 1, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+    -> DEBUG: Store serving, inventory: 0 items
+    -> Store has no bread to sell (customer disappointed)
+    -> Store BLOCKED waiting to receive
+Store: serving (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 10}
+    -> Customer attempting to buy bread with $10 (attempt #4)
+    -> DEBUG: Resolved 'current_payment' to 10
+    -> Customer sent 10 to Store
+Customer: shopping -> leaving | Variables: {'purchases_attempted': 4, 'money_spent': 44, 'current_payment': 10}
+
+=== TIMESTEP 12 ===
+    -> Bakery baked Sourdough ($10)
+    -> Bakery sent {'type': 'Sourdough', 'price': 10} to Truck
+Bakery: baking_sourdough -> idle | Variables: {'breads_baked': 6, 'production_value': 72}
+    -> Truck loaded Rye bread
+    -> Truck received {'type': 'Sourdough', 'price': 10} into bread
+Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}], 'loads_received': 5, 'deliveries_made': 1, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+    -> Store received 10 into customer_payment
+    -> DEBUG: Store received payment $10, inventory: 0 items
+Store: serving (stayed) | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 10}
+Customer: leaving -> away | Variables: {'purchases_attempted': 4, 'money_spent': 44, 'current_payment': 10}
+
+=== TIMESTEP 13 ===
+Bakery: idle -> baking_sourdough | Variables: {'breads_baked': 6, 'production_value': 72}
+    -> Truck loaded Sourdough bread
+    -> Truck BLOCKED waiting to receive
+Truck: loading (stayed) [BLOCKED] | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}], 'loads_received': 6, 'deliveries_made': 1, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+    -> DEBUG: Store serving, inventory: 0 items
+    -> Store has no bread to sell (customer disappointed)
+    -> Store BLOCKED waiting to receive
+Store: serving (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 10}
+Customer: away -> shopping | Variables: {'purchases_attempted': 4, 'money_spent': 44, 'current_payment': 10}
+
+=== TIMESTEP 14 ===
+    -> Bakery baked Sourdough ($10)
+    -> Bakery sent {'type': 'Sourdough', 'price': 10} to Truck
+Bakery: baking_sourdough -> baking_rye | Variables: {'breads_baked': 7, 'production_value': 82}
+    -> Truck received {'type': 'Sourdough', 'price': 10} into bread
+Truck: loading -> traveling | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}], 'loads_received': 6, 'deliveries_made': 1, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+    -> Store BLOCKED waiting to receive
+Store: serving (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 10}
+    -> Customer attempting to buy bread with $12 (attempt #5)
+    -> DEBUG: Resolved 'current_payment' to 12
+    -> Customer sent 12 to Store
+Customer: shopping -> leaving | Variables: {'purchases_attempted': 5, 'money_spent': 56, 'current_payment': 12}
+
+=== TIMESTEP 15 ===
+    -> Bakery baked Rye ($12)
+    -> Bakery sent {'type': 'Rye', 'price': 12} to Truck
+Bakery: baking_rye -> baking_apple | Variables: {'breads_baked': 8, 'production_value': 94}
+Truck: traveling -> delivering | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}], 'loads_received': 6, 'deliveries_made': 1, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+    -> Store received 12 into customer_payment
+    -> DEBUG: Store received payment $12, inventory: 0 items
+Store: serving (stayed) | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 12}
+Customer: leaving -> away | Variables: {'purchases_attempted': 5, 'money_spent': 56, 'current_payment': 12}
+
+=== TIMESTEP 16 ===
+    -> Bakery baked Apple ($15)
+    -> Bakery sent {'type': 'Apple', 'price': 15} to Truck
+Bakery: baking_apple -> idle | Variables: {'breads_baked': 9, 'production_value': 109}
+    -> DEBUG: Truck attempting delivery, cargo: 5 items
+    -> Truck delivering Sourdough to store
+    -> DEBUG: Resolved 'delivering_bread' to {'type': 'Sourdough', 'price': 10}
+    -> Truck sent {'type': 'Sourdough', 'price': 10} to Store
+    -> DEBUG: Truck delivery SUCCESS! Channel capacity: 3
+Truck: delivering -> waiting | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}], 'loads_received': 6, 'deliveries_made': 2, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
+    -> DEBUG: Store serving, inventory: 0 items
+    -> Store has no bread to sell (customer disappointed)
+    -> Store BLOCKED waiting to receive
+Store: serving (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 12}
+Customer: away -> shopping | Variables: {'purchases_attempted': 5, 'money_spent': 56, 'current_payment': 12}
 
 === TIMESTEP 17 ===
-    -> Bakery baked Apple ($15)
-    -> Bakery BLOCKED sending to Truck
-Bakery: baking_apple (stayed) [BLOCKED] | Variables: {'breads_baked': 7, 'production_value': 91}
-Truck: waiting (stayed) | Variables: {'cargo': [], 'loads_received': 3, 'deliveries_made': 3, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
-Store: open -> cleaning | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}], 'items_stocked': 2, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 20}
-Customer: away (stayed) | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
+Bakery: idle -> baking_rye | Variables: {'breads_baked': 9, 'production_value': 109}
+Truck: waiting (stayed) | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}], 'loads_received': 6, 'deliveries_made': 2, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
+    -> Store BLOCKED waiting to receive
+Store: serving (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 12}
+    -> Customer attempting to buy bread with $15 (attempt #6)
+    -> DEBUG: Resolved 'current_payment' to 15
+    -> Customer sent 15 to Store
+Customer: shopping -> leaving | Variables: {'purchases_attempted': 6, 'money_spent': 71, 'current_payment': 15}
 
 === TIMESTEP 18 ===
+    -> Bakery baked Rye ($12)
     -> Bakery BLOCKED sending to Truck
-Bakery: baking_apple (stayed) [BLOCKED] | Variables: {'breads_baked': 7, 'production_value': 91}
-Truck: waiting (stayed) | Variables: {'cargo': [], 'loads_received': 3, 'deliveries_made': 3, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
-Store: cleaning -> open | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}], 'items_stocked': 2, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 20}
-Customer: away -> shopping | Variables: {'purchases_attempted': 1, 'money_spent': 20, 'current_payment': 20}
+Bakery: baking_rye (stayed) [BLOCKED] | Variables: {'breads_baked': 10, 'production_value': 121}
+Truck: waiting -> loading | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}], 'loads_received': 6, 'deliveries_made': 2, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
+    -> Store received 15 into customer_payment
+    -> DEBUG: Store received payment $15, inventory: 0 items
+Store: serving -> open | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 15}
+Customer: leaving -> away | Variables: {'purchases_attempted': 6, 'money_spent': 71, 'current_payment': 15}
 
 === TIMESTEP 19 ===
     -> Bakery BLOCKED sending to Truck
-Bakery: baking_apple (stayed) [BLOCKED] | Variables: {'breads_baked': 7, 'production_value': 91}
-Truck: waiting -> loading | Variables: {'cargo': [], 'loads_received': 3, 'deliveries_made': 3, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
-Store: open -> stocking | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}], 'items_stocked': 2, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 20}
-    -> Customer attempting to buy bread with $15
-    -> DEBUG: Resolved 'current_payment' to 15
-    -> Customer sent 15 to Store
-Customer: shopping -> leaving | Variables: {'purchases_attempted': 2, 'money_spent': 35, 'current_payment': 15}
+Bakery: baking_rye (stayed) [BLOCKED] | Variables: {'breads_baked': 10, 'production_value': 121}
+    -> Truck loaded Sourdough bread
+    -> Truck received {'type': 'Rye', 'price': 12} into bread
+Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}], 'loads_received': 7, 'deliveries_made': 2, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
+Store: open -> stocking | Variables: {'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 15}
+Customer: away (stayed) | Variables: {'purchases_attempted': 6, 'money_spent': 71, 'current_payment': 15}
 
 === TIMESTEP 20 ===
-    -> Bakery BLOCKED sending to Truck
-Bakery: baking_apple (stayed) [BLOCKED] | Variables: {'breads_baked': 7, 'production_value': 91}
+    -> Bakery sent {'type': 'Rye', 'price': 12} to Truck
+Bakery: baking_rye -> baking_apple | Variables: {'breads_baked': 10, 'production_value': 121}
     -> Truck loaded Rye bread
     -> Truck received {'type': 'Apple', 'price': 15} into bread
-Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Rye', 'price': 12}], 'loads_received': 4, 'deliveries_made': 3, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+Truck: loading -> traveling | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}], 'loads_received': 8, 'deliveries_made': 2, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
     -> DEBUG: Store received bread_delivery: {'type': 'Apple', 'price': 15} (type: <class 'dict'>)
     -> Store stocked Apple on shelves
-    -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}], 'items_stocked': 3, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 20}
-Customer: leaving -> away | Variables: {'purchases_attempted': 2, 'money_spent': 35, 'current_payment': 15}
+    -> Store received {'type': 'Sourdough', 'price': 10} into bread_delivery
+Store: stocking -> serving | Variables: {'inventory': [{'type': 'Apple', 'price': 15}], 'items_stocked': 1, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Sourdough', 'price': 10}, 'customer_payment': 15}
+Customer: away (stayed) | Variables: {'purchases_attempted': 6, 'money_spent': 71, 'current_payment': 15}
 
 === TIMESTEP 21 ===
+    -> Bakery baked Apple ($15)
     -> Bakery sent {'type': 'Apple', 'price': 15} to Truck
-Bakery: baking_apple -> baking_sourdough | Variables: {'breads_baked': 7, 'production_value': 91}
-    -> Truck loaded Apple bread
-    -> Truck received {'type': 'Rye', 'price': 12} into bread
-Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}], 'loads_received': 5, 'deliveries_made': 3, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+Bakery: baking_apple -> idle | Variables: {'breads_baked': 11, 'production_value': 136}
+Truck: traveling -> delivering | Variables: {'cargo': [{'type': 'Sourdough', 'price': 10}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}], 'loads_received': 8, 'deliveries_made': 2, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
+    -> DEBUG: Store serving, inventory: 1 items
+    -> Store sold Apple for $15 (paid $15)
     -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}], 'items_stocked': 3, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 20}
-Customer: away (stayed) | Variables: {'purchases_attempted': 2, 'money_spent': 35, 'current_payment': 15}
+Store: serving (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 1, 'items_sold': 1, 'revenue': 15, 'bread_delivery': {'type': 'Sourdough', 'price': 10}, 'customer_payment': 15}
+Customer: away -> shopping | Variables: {'purchases_attempted': 6, 'money_spent': 71, 'current_payment': 15}
 
 === TIMESTEP 22 ===
-    -> Bakery baked Sourdough ($10)
-    -> Bakery sent {'type': 'Sourdough', 'price': 10} to Truck
-Bakery: baking_sourdough -> idle | Variables: {'breads_baked': 8, 'production_value': 101}
-    -> Truck loaded Rye bread
-    -> Truck received {'type': 'Apple', 'price': 15} into bread
-Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}], 'loads_received': 6, 'deliveries_made': 3, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+Bakery: idle -> baking_sourdough | Variables: {'breads_baked': 11, 'production_value': 136}
+    -> DEBUG: Truck attempting delivery, cargo: 6 items
+    -> Truck delivering Sourdough to store
+    -> DEBUG: Resolved 'delivering_bread' to {'type': 'Sourdough', 'price': 10}
+    -> Truck sent {'type': 'Sourdough', 'price': 10} to Store
+    -> DEBUG: Truck delivery SUCCESS! Channel capacity: 3
+Truck: delivering -> waiting | Variables: {'cargo': [{'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}], 'loads_received': 8, 'deliveries_made': 3, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
     -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}], 'items_stocked': 3, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 20}
-Customer: away (stayed) | Variables: {'purchases_attempted': 2, 'money_spent': 35, 'current_payment': 15}
+Store: serving (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 1, 'items_sold': 1, 'revenue': 15, 'bread_delivery': {'type': 'Sourdough', 'price': 10}, 'customer_payment': 15}
+    -> Customer attempting to buy bread with $20 (attempt #7)
+    -> DEBUG: Resolved 'current_payment' to 20
+    -> Customer sent 20 to Store
+Customer: shopping -> leaving | Variables: {'purchases_attempted': 7, 'money_spent': 91, 'current_payment': 20}
 
 === TIMESTEP 23 ===
-Bakery: idle -> baking_sourdough | Variables: {'breads_baked': 8, 'production_value': 101}
-    -> Truck loaded Apple bread
-    -> Truck received {'type': 'Sourdough', 'price': 10} into bread
-Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}], 'loads_received': 7, 'deliveries_made': 3, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
-    -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}], 'items_stocked': 3, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 20}
-Customer: away (stayed) | Variables: {'purchases_attempted': 2, 'money_spent': 35, 'current_payment': 15}
+    -> Bakery baked Sourdough ($10)
+    -> Bakery BLOCKED sending to Truck
+Bakery: baking_sourdough (stayed) [BLOCKED] | Variables: {'breads_baked': 12, 'production_value': 146}
+Truck: waiting -> loading | Variables: {'cargo': [{'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}], 'loads_received': 8, 'deliveries_made': 3, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
+    -> Store received 20 into customer_payment
+    -> DEBUG: Store received payment $20, inventory: 0 items
+Store: serving (stayed) | Variables: {'inventory': [], 'items_stocked': 1, 'items_sold': 1, 'revenue': 15, 'bread_delivery': {'type': 'Sourdough', 'price': 10}, 'customer_payment': 20}
+Customer: leaving -> away | Variables: {'purchases_attempted': 7, 'money_spent': 91, 'current_payment': 20}
 
 === TIMESTEP 24 ===
-    -> Bakery baked Sourdough ($10)
-    -> Bakery sent {'type': 'Sourdough', 'price': 10} to Truck
-Bakery: baking_sourdough -> baking_rye | Variables: {'breads_baked': 9, 'production_value': 111}
-    -> Truck loaded Sourdough bread
-    -> Truck received {'type': 'Sourdough', 'price': 10} into bread
-Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}, {'type': 'Sourdough', 'price': 10}], 'loads_received': 8, 'deliveries_made': 3, 'bread': {'type': 'Sourdough', 'price': 10}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+    -> Bakery BLOCKED sending to Truck
+Bakery: baking_sourdough (stayed) [BLOCKED] | Variables: {'breads_baked': 12, 'production_value': 146}
+    -> Truck loaded Apple bread
+    -> Truck received {'type': 'Rye', 'price': 12} into bread
+Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}], 'loads_received': 9, 'deliveries_made': 3, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
+    -> DEBUG: Store serving, inventory: 0 items
+    -> Store has no bread to sell (customer disappointed)
     -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}], 'items_stocked': 3, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 20}
-Customer: away -> shopping | Variables: {'purchases_attempted': 2, 'money_spent': 35, 'current_payment': 15}
+Store: serving (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 1, 'items_sold': 1, 'revenue': 15, 'bread_delivery': {'type': 'Sourdough', 'price': 10}, 'customer_payment': 20}
+Customer: away (stayed) | Variables: {'purchases_attempted': 7, 'money_spent': 91, 'current_payment': 20}
 
 === TIMESTEP 25 ===
-    -> Bakery baked Rye ($12)
-    -> Bakery sent {'type': 'Rye', 'price': 12} to Truck
-Bakery: baking_rye -> idle | Variables: {'breads_baked': 10, 'production_value': 123}
-    -> Truck loaded Sourdough bread
-    -> Truck received {'type': 'Rye', 'price': 12} into bread
-Truck: loading -> traveling | Variables: {'cargo': [{'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}, {'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}], 'loads_received': 9, 'deliveries_made': 3, 'bread': {'type': 'Rye', 'price': 12}, 'delivering_bread': {'type': 'Apple', 'price': 15}}
+    -> Bakery sent {'type': 'Sourdough', 'price': 10} to Truck
+Bakery: baking_sourdough -> idle | Variables: {'breads_baked': 12, 'production_value': 146}
+    -> Truck loaded Rye bread
+    -> Truck received {'type': 'Apple', 'price': 15} into bread
+Truck: loading (stayed) | Variables: {'cargo': [{'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}, {'type': 'Sourdough', 'price': 10}, {'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}, {'type': 'Rye', 'price': 12}], 'loads_received': 10, 'deliveries_made': 3, 'bread': {'type': 'Apple', 'price': 15}, 'delivering_bread': {'type': 'Sourdough', 'price': 10}}
     -> Store BLOCKED waiting to receive
-Store: stocking (stayed) [BLOCKED] | Variables: {'inventory': [{'type': 'Sourdough', 'price': 10}, {'type': 'Rye', 'price': 12}, {'type': 'Apple', 'price': 15}], 'items_stocked': 3, 'items_sold': 0, 'revenue': 0, 'bread_delivery': {'type': 'Apple', 'price': 15}, 'customer_payment': 20}
-    -> Customer attempting to buy bread with $10
-    -> DEBUG: Resolved 'current_payment' to 10
-    -> Customer BLOCKED sending to Store
-Customer: shopping (stayed) [BLOCKED] | Variables: {'purchases_attempted': 3, 'money_spent': 45, 'current_payment': 10}
+Store: serving (stayed) [BLOCKED] | Variables: {'inventory': [], 'items_stocked': 1, 'items_sold': 1, 'revenue': 15, 'bread_delivery': {'type': 'Sourdough', 'price': 10}, 'customer_payment': 20}
+Customer: away (stayed) | Variables: {'purchases_attempted': 7, 'money_spent': 91, 'current_payment': 20}
 
 === SIMULATION COMPLETE ===
-Final state: {'Bakery': 'idle', 'Truck': 'traveling', 'Store': 'stocking', 'Customer': 'shopping'}
+Final state: {'Bakery': 'idle', 'Truck': 'loading', 'Store': 'serving', 'Customer': 'away'}
 ```
 
 ## Business Metrics Analysis
 
-- **Production**: 9 breads baked, $111 value
-- **Logistics**: 8 loads received, 3 deliveries made
-- **Retail**: 3 stocked, 0 sold, $0 revenue
-- **Customer**: 2 attempts, $35 spent
-- **Efficiency**: 100.00% waste rate, $0.00 revenue/bread
-- **Satisfaction**: 0.00% customer satisfaction
+- **Production**: 12 breads baked, $146 value
+- **Logistics**: 9 loads received, 3 deliveries made
+- **Retail**: 1 stocked, 1 sold, $15 revenue
+- **Customer**: 7 attempts, $91 spent
+- **Efficiency**: 91.67% waste rate, $15.00 revenue/bread
+- **Satisfaction**: 14.29% customer satisfaction
 
 **Inventory Status:**
-- Unsold inventory: 3 items
-- Truck cargo remaining: 6 items
+- Unsold inventory: 0 items
+- Truck cargo remaining: 7 items
 
 ## Temporal Logic Questions
 
@@ -346,13 +384,13 @@ stateDiagram-v2
         Store_cleaning : cleaning
         Store_open : open
         [*] --> Store_open
-        Store_open --> Store_stocking : .5
-        Store_open --> Store_serving : .3
+        Store_open --> Store_stocking : .3
+        Store_open --> Store_serving : .5
         Store_open --> Store_cleaning : .2
-        Store_stocking --> Store_open : .4
-        Store_stocking --> Store_serving : .6
-        Store_serving --> Store_open : .5
-        Store_serving --> Store_stocking : .5
+        Store_stocking --> Store_open : .2
+        Store_stocking --> Store_serving : .8
+        Store_serving --> Store_open : .3
+        Store_serving --> Store_serving : .7
         Store_cleaning --> Store_open
     }
 
@@ -361,8 +399,8 @@ stateDiagram-v2
         Customer_leaving : leaving
         Customer_away : away
         [*] --> Customer_away
-        Customer_away --> Customer_away : .7
-        Customer_away --> Customer_shopping : .3
+        Customer_away --> Customer_away : .5
+        Customer_away --> Customer_shopping : .5
         Customer_shopping --> Customer_leaving
         Customer_leaving --> Customer_away
     }
@@ -380,19 +418,22 @@ sequenceDiagram
     participant Store
     participant Customer
 
-    Bakery->>Truck: Step 4: bread_to_truck bread
-    Truck->>Store: Step 9: bread_to_store delivery
+    Bakery->>Truck: Step 3: bread_to_truck bread
+    Customer->>Store: Step 7: customer_orders $12
+    Bakery->>Truck: Step 9: bread_to_truck bread
+    Customer->>Store: Step 9: customer_orders $10
     Bakery->>Truck: Step 10: bread_to_truck bread
-    Customer->>Store: Step 13: customer_orders $20
-    Bakery->>Truck: Step 14: bread_to_truck bread
-    Truck->>Store: Step 15: bread_to_store delivery
+    Bakery->>Truck: Step 11: bread_to_truck bread
+    Bakery->>Truck: Step 12: bread_to_truck bread
+    Bakery->>Truck: Step 13: bread_to_truck bread
+    Customer->>Store: Step 15: customer_orders $12
+    Customer->>Store: Step 18: customer_orders $15
+    Bakery->>Truck: Step 19: bread_to_truck bread
     Bakery->>Truck: Step 20: bread_to_truck bread
     Truck->>Store: Step 20: bread_to_store delivery
-    Bakery->>Truck: Step 21: bread_to_truck bread
-    Bakery->>Truck: Step 22: bread_to_truck bread
-    Bakery->>Truck: Step 23: bread_to_truck bread
+    Customer->>Store: Step 23: customer_orders $20
     Bakery->>Truck: Step 24: bread_to_truck bread
-    Note right of Bakery: 12 messages detected
+    Note right of Bakery: 15 messages detected
 ```
 
 ============================================================
@@ -404,9 +445,9 @@ xychart-beta
     title "Bakery Business Metrics Over Time"
     x-axis "Timestep" 1 --> 25
     y-axis "Count" 0 --> 20
-    line "Breads Baked" [0,0,0,1,1,2,2,2,3,3,4,5,5,6,6,6,6,7,7,7,7,7,8,8,9]
-    line "Items Sold" [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-    line "Revenue ($10s)" [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    line "Breads Baked" [0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,8,9,9,10,10,10,11,11,12,12]
+    line "Items Sold" [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1]
+    line "Revenue ($10s)" [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1]
 ```
 
 ---

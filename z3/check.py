@@ -254,6 +254,11 @@ class Actor:
                         operation_completed = True
                         self.blocked = False
                         print(f"    -> {self.name} received {value} into {op.variable_name}")
+                        
+                        # Extra debug for store receiving payments
+                        if self.name == "Store" and op.channel_name == "customer_orders":
+                            inventory_count = len(self.variables.get('inventory', []))
+                            print(f"    -> DEBUG: Store received payment ${value}, inventory: {inventory_count} items")
                     else:
                         self.blocked = True
                         print(f"    -> {self.name} BLOCKED waiting to receive")
@@ -518,6 +523,7 @@ def create_bakery_business() -> Model:
     
     def serve_customer_action(variables):
         inventory = variables.get('inventory', [])
+        print(f"    -> DEBUG: Store serving, inventory: {len(inventory)} items")
         if 'customer_payment' in variables and inventory:
             payment = variables['customer_payment']
             # Sell the oldest bread
@@ -527,6 +533,10 @@ def create_bakery_business() -> Model:
             print(f"    -> Store sold {sold_bread['type']} for ${sold_bread['price']} (paid ${payment})")
         elif 'customer_payment' in variables:
             print(f"    -> Store has no bread to sell (customer disappointed)")
+        elif inventory:
+            print(f"    -> Store has {len(inventory)} items but no customer payment")
+        else:
+            print(f"    -> Store idle - no inventory, no customers")
         return variables
     
     store_open = State("open")
@@ -538,10 +548,10 @@ def create_bakery_business() -> Model:
                          channel_op=ReceiveOperation("customer_orders", "customer_payment"))
     store_cleaning = State("cleaning")
     
-    # Store transitions - balances stocking and serving, prioritizes stocking when empty
-    store_open.transitions = [(0.5, store_stocking), (0.3, store_serving), (0.2, store_cleaning)]
-    store_stocking.transitions = [(0.4, store_open), (0.6, store_serving)]
-    store_serving.transitions = [(0.5, store_open), (0.5, store_stocking)]
+    # Store transitions - prioritize serving when inventory exists
+    store_open.transitions = [(0.3, store_stocking), (0.5, store_serving), (0.2, store_cleaning)]
+    store_stocking.transitions = [(0.2, store_open), (0.8, store_serving)]  # Go to serving after stocking
+    store_serving.transitions = [(0.3, store_open), (0.7, store_serving)]  # Stay serving longer
     store_cleaning.transitions = [(1.0, store_open)]
     
     # === CUSTOMER ACTOR ===
@@ -552,7 +562,7 @@ def create_bakery_business() -> Model:
         payment = random.choice([10, 12, 15, 20])  # Customer brings different amounts
         variables['money_spent'] = variables.get('money_spent', 0) + payment
         variables['current_payment'] = payment  # Store the payment amount
-        print(f"    -> Customer attempting to buy bread with ${payment}")
+        print(f"    -> Customer attempting to buy bread with ${payment} (attempt #{variables['purchases_attempted']})")
         return variables
     
     customer_away = State("away")
@@ -562,8 +572,8 @@ def create_bakery_business() -> Model:
                                                      "current_payment", "customer_payment"))
     customer_leaving = State("leaving")
     
-    # Customer transitions - comes and goes
-    customer_away.transitions = [(0.7, customer_away), (0.3, customer_shopping)]
+    # Customer transitions - comes more frequently  
+    customer_away.transitions = [(0.5, customer_away), (0.5, customer_shopping)]  # 50% chance to shop
     customer_shopping.transitions = [(1.0, customer_leaving)]
     customer_leaving.transitions = [(1.0, customer_away)]
     
@@ -607,7 +617,7 @@ def create_bakery_business() -> Model:
     # Channels with appropriate capacities
     model.add_channel(Channel("bread_to_truck", capacity=2))    # Truck can hold 2 batches
     model.add_channel(Channel("bread_to_store", capacity=3))    # Store has receiving dock space
-    model.add_channel(Channel("customer_orders", capacity=1))   # One customer at a time
+    model.add_channel(Channel("customer_orders", capacity=3))   # Allow multiple pending orders
     
     return model
 
