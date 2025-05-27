@@ -320,6 +320,10 @@ class Model:
             if actor.variables:
                 status += f" | Variables: {actor.variables}"
             
+            # Extra debug for Customer activity
+            if actor_name == "Customer":
+                status += f" | Activity: {new_state}"
+            
             print(status)
         
         return results
@@ -518,7 +522,13 @@ def create_bakery_business() -> Model:
                 variables['inventory'] = variables.get('inventory', [])
                 variables['inventory'].append(bread)
                 variables['items_stocked'] = variables.get('items_stocked', 0) + 1
-                print(f"    -> Store stocked {bread['type']} on shelves")
+                
+                # OPEN THE STORE when first delivery arrives!
+                if variables.get('items_stocked', 0) == 1:
+                    variables['store_open'] = True
+                    print(f"    -> STORE OPENS! First delivery arrived: {bread['type']}")
+                else:
+                    print(f"    -> Store stocked {bread['type']} on shelves (inventory: {len(variables['inventory'])})")
         return variables
     
     def serve_customer_action(variables):
@@ -539,7 +549,7 @@ def create_bakery_business() -> Model:
             print(f"    -> Store idle - no inventory, no customers")
         return variables
     
-    store_open = State("open")
+    store_closed = State("closed")  # Store starts closed
     store_stocking = State("stocking",
                           action=stock_shelves_action,
                           channel_op=ReceiveOperation("bread_to_store", "bread_delivery"))
@@ -548,11 +558,11 @@ def create_bakery_business() -> Model:
                          channel_op=ReceiveOperation("customer_orders", "customer_payment"))
     store_cleaning = State("cleaning")
     
-    # Store transitions - prioritize serving when inventory exists
-    store_open.transitions = [(0.3, store_stocking), (0.5, store_serving), (0.2, store_cleaning)]
-    store_stocking.transitions = [(0.2, store_open), (0.8, store_serving)]  # Go to serving after stocking
-    store_serving.transitions = [(0.3, store_open), (0.7, store_serving)]  # Stay serving longer
-    store_cleaning.transitions = [(1.0, store_open)]
+    # Store transitions - starts closed, opens when inventory arrives
+    store_closed.transitions = [(1.0, store_stocking)]  # Always try to stock when closed
+    store_stocking.transitions = [(0.2, store_cleaning), (0.8, store_serving)]  # Open for business after stocking
+    store_serving.transitions = [(0.3, store_cleaning), (0.7, store_serving)]  # Stay serving longer
+    store_cleaning.transitions = [(0.6, store_serving), (0.4, store_stocking)]  # Back to business
     
     # === CUSTOMER ACTOR ===
     # Periodically comes to buy bread
@@ -572,10 +582,10 @@ def create_bakery_business() -> Model:
                                                      "current_payment", "customer_payment"))
     customer_leaving = State("leaving")
     
-    # Customer transitions - comes more frequently  
-    customer_away.transitions = [(0.5, customer_away), (0.5, customer_shopping)]  # 50% chance to shop
+    # Customer transitions - very active shopper!
+    customer_away.transitions = [(0.3, customer_away), (0.7, customer_shopping)]  # 70% chance to shop
     customer_shopping.transitions = [(1.0, customer_leaving)]
-    customer_leaving.transitions = [(1.0, customer_away)]
+    customer_leaving.transitions = [(0.8, customer_away), (0.2, customer_shopping)]  # Sometimes shop again immediately
     
     # === CREATE ACTORS ===
     
@@ -595,9 +605,9 @@ def create_bakery_business() -> Model:
     
     store = Actor(
         name="Store", 
-        states=[store_open, store_stocking, store_serving, store_cleaning],
-        initial_state=store_open,
-        variables={'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0}
+        states=[store_closed, store_stocking, store_serving, store_cleaning],
+        initial_state=store_closed,  # Start closed!
+        variables={'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'store_open': False}
     )
     
     customer = Actor(
