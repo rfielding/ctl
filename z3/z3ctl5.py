@@ -208,8 +208,49 @@ class SimulationCounters:
             total_transitions = sum(self.state_transitions.values())
             return total_errors / total_transitions if total_transitions > 0 else 0.0
     
+    def validate_message_flows(self) -> Dict[str, Any]:
+        """Validate that message flows are balanced and complete"""
+        validation_results = {
+            'channel_balance': {},
+            'unprocessed_messages': {},
+            'flow_efficiency': {},
+            'potential_issues': []
+        }
+        
+        for channel in set(list(self.messages_sent.keys()) + list(self.messages_received.keys())):
+            sent = self.messages_sent.get(channel, 0)
+            received = self.messages_received.get(channel, 0)
+            
+            # Calculate balance
+            balance = sent - received
+            validation_results['channel_balance'][channel] = {
+                'sent': sent,
+                'received': received,
+                'unprocessed': balance
+            }
+            
+            if balance > 0:
+                validation_results['unprocessed_messages'][channel] = balance
+                validation_results['potential_issues'].append(
+                    f"Channel '{channel}' has {balance} unprocessed messages - potential bottleneck"
+                )
+            
+            # Calculate efficiency (% of messages processed)
+            if sent > 0:
+                efficiency = (received / sent) * 100
+                validation_results['flow_efficiency'][channel] = f"{efficiency:.1f}%"
+                
+                if efficiency < 90:
+                    validation_results['potential_issues'].append(
+                        f"Channel '{channel}' has low processing efficiency: {efficiency:.1f}%"
+                    )
+            else:
+                validation_results['flow_efficiency'][channel] = "N/A"
+        
+        return validation_results
+    
     def generate_report(self) -> str:
-        """Generate simulation report"""
+        """Generate simulation report with message flow validation"""
         report = []
         report.append("# Simulation Report")
         report.append("")
@@ -220,13 +261,26 @@ class SimulationCounters:
             report.append(f"- {process}: {count} transitions")
         report.append("")
         
-        # Message passing
+        # Message passing with validation
         report.append("## Message Passing")
-        for channel in set(list(self.messages_sent.keys()) + list(self.messages_received.keys())):
-            sent = self.messages_sent.get(channel, 0)
-            received = self.messages_received.get(channel, 0)
-            report.append(f"- {channel}: {sent} sent, {received} received")
+        validation = self.validate_message_flows()
+        
+        for channel, balance_info in validation['channel_balance'].items():
+            sent = balance_info['sent']
+            received = balance_info['received']
+            unprocessed = balance_info['unprocessed']
+            efficiency = validation['flow_efficiency'][channel]
+            
+            status = "✅" if unprocessed == 0 else "⚠️" if unprocessed < 5 else "❌"
+            report.append(f"- {channel}: {sent} sent, {received} received, {unprocessed} pending {status} (efficiency: {efficiency})")
         report.append("")
+        
+        # Flow validation issues
+        if validation['potential_issues']:
+            report.append("## Message Flow Issues")
+            for issue in validation['potential_issues']:
+                report.append(f"- ⚠️ {issue}")
+            report.append("")
         
         # Business events
         report.append("## Business Events")
@@ -256,6 +310,40 @@ class SimulationCounters:
             for sla, count in self.sla_violations.items():
                 report.append(f"- {sla}: {count} violations")
             report.append("")
+        
+        # Business insights
+        report.append("## Business Insights")
+        total_orders = self.business_events.get('order_received', 0)
+        completed_orders = self.business_events.get('order_shipped', 0)
+        failed_payments = self.business_events.get('payment_failed', 0)
+        stock_issues = self.business_events.get('out_of_stock', 0)
+        
+        if total_orders > 0:
+            completion_rate = (completed_orders / total_orders) * 100
+            payment_failure_rate = (failed_payments / total_orders) * 100
+            stock_availability = ((total_orders - stock_issues) / total_orders) * 100
+            
+            report.append(f"- Order Completion Rate: {completion_rate:.1f}%")
+            report.append(f"- Payment Failure Rate: {payment_failure_rate:.1f}%")
+            report.append(f"- Stock Availability: {stock_availability:.1f}%")
+            report.append("")
+            
+            # Business recommendations
+            report.append("## Business Recommendations")
+            if completion_rate < 80:
+                report.append("- 🔴 Order completion rate is below 80% - investigate process bottlenecks")
+            if payment_failure_rate > 10:
+                report.append("- 🔴 Payment failure rate is high - review payment processor reliability")
+            if stock_availability < 95:
+                report.append("- 🔴 Stock availability is low - improve inventory forecasting")
+            
+            # Positive insights
+            if completion_rate >= 90:
+                report.append("- ✅ Excellent order completion rate")
+            if payment_failure_rate <= 5:
+                report.append("- ✅ Payment processing is reliable")
+            if stock_availability >= 98:
+                report.append("- ✅ Inventory management is effective")
         
         return "\n".join(report)
 
@@ -551,6 +639,8 @@ def example_vibecode_business_system():
             
             # Payment processing
             system.simulate_message_send("payment_requests", "order_service", f"pay_order_{order_id}")
+            system.simulate_message_receive("payment_requests", "payment_service")  # ✅ Receive message
+            
             system.simulate_step("payment_service", "idle", "processing_payment",
                                "payment_started", random.uniform(0.5, 2.0))
             
@@ -558,14 +648,24 @@ def example_vibecode_business_system():
                 system.simulate_step("payment_service", "processing_payment", "payment_successful",
                                    "payment_completed", random.uniform(1.0, 3.0))
                 
+                # Send payment confirmation back
+                system.simulate_message_send("order_events", "payment_service", f"payment_confirmed_{order_id}")
+                system.simulate_message_receive("order_events", "order_service")  # ✅ Receive confirmation
+                
                 # Inventory check
                 system.simulate_message_send("inventory_queries", "order_service", f"check_stock_{order_id}")
+                system.simulate_message_receive("inventory_queries", "inventory_service")  # ✅ Receive query
+                
                 system.simulate_step("inventory_service", "available", "checking_stock",
                                    "stock_check_started", random.uniform(0.1, 0.3))
                 
                 if random.random() > 0.02:  # 98% in stock
                     system.simulate_step("inventory_service", "checking_stock", "stock_reserved",
                                        "stock_reserved", random.uniform(0.2, 0.5))
+                    
+                    # Send inventory confirmation back
+                    system.simulate_message_send("order_events", "inventory_service", f"stock_confirmed_{order_id}")
+                    system.simulate_message_receive("order_events", "fulfillment_service")  # ✅ Receive for fulfillment
                     
                     # Fulfillment
                     system.simulate_step("fulfillment_service", "waiting", "picking_items",
@@ -574,16 +674,31 @@ def example_vibecode_business_system():
                                        "items_picked", random.uniform(10.0, 30.0))
                     system.simulate_step("fulfillment_service", "packaging", "shipped",
                                        "order_shipped", random.uniform(2.0, 5.0))
+                    
+                    # Send shipping notification
+                    system.simulate_message_send("order_events", "fulfillment_service", f"shipped_{order_id}")
+                    system.simulate_message_receive("order_events", "order_service")  # ✅ Final confirmation
+                    
                 else:
                     # Out of stock
                     system.simulate_step("inventory_service", "checking_stock", "out_of_stock",
                                        "out_of_stock", random.uniform(0.1, 0.2))
                     system.simulate_error("inventory_service", "stock_shortage", "Item out of stock")
+                    
+                    # Send out-of-stock notification
+                    system.simulate_message_send("order_events", "inventory_service", f"out_of_stock_{order_id}")
+                    system.simulate_message_receive("order_events", "order_service")  # ✅ Error notification
+                    
             else:
                 # Payment failed
                 system.simulate_step("payment_service", "processing_payment", "payment_failed",
                                    "payment_failed", random.uniform(2.0, 5.0))
                 system.simulate_error("payment_service", "payment_failure", "Payment declined")
+                
+                # Send payment failure notification
+                system.simulate_message_send("order_events", "payment_service", f"payment_failed_{order_id}")
+                system.simulate_message_receive("order_events", "order_service")  # ✅ Failure notification
+                
         else:
             # Order validation failed
             system.simulate_step("order_service", "validating_order", "order_rejected",
