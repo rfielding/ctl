@@ -427,7 +427,222 @@ def create_sync_example() -> Model:
     return model
 
 
-def create_bakery_business() -> Model:
+def create_scheduled_bakery_business() -> Model:
+    """Model a bakery with proper time-based scheduling coordination."""
+    
+    model = Model()
+    
+    # === SCHEDULE ACTOR ===
+    # Coordinates all business timing
+    
+    def announce_time(time_period, message):
+        def time_action(variables):
+            variables['current_time'] = time_period
+            variables['time_step'] = variables.get('time_step', 0) + 1
+            print(f"    -> SCHEDULE: {message} (Step {variables['time_step']})")
+            return variables
+        return time_action
+    
+    # Schedule states representing business day timeline
+    schedule_night = State("night", action=announce_time("night", "5:00 AM - Bakers start"))
+    schedule_morning = State("morning", action=announce_time("morning", "7:00 AM - Bread ready, delivery window"))  
+    schedule_pre_open = State("pre_open", action=announce_time("pre_open", "10:30 AM - Final delivery push"))
+    schedule_open = State("open", action=announce_time("open", "11:00 AM - Store opens"))
+    schedule_afternoon = State("afternoon", action=announce_time("afternoon", "1:00 PM - Peak customer time"))
+    schedule_evening = State("evening", action=announce_time("evening", "5:00 PM - Closing soon"))
+    
+    # Schedule transitions - deterministic daily cycle
+    schedule_night.transitions = [(1.0, schedule_morning)]
+    schedule_morning.transitions = [(1.0, schedule_pre_open)]  
+    schedule_pre_open.transitions = [(1.0, schedule_open)]
+    schedule_open.transitions = [(1.0, schedule_afternoon)]
+    schedule_afternoon.transitions = [(1.0, schedule_evening)]
+    schedule_evening.transitions = [(1.0, schedule_night)]  # Next day
+    
+    # === BAKERY ACTOR ===
+    # Responds to schedule signals
+    
+    def scheduled_baking(bread_type, price):
+        def bake_action(variables):
+            # Only bake during morning hours
+            variables['breads_baked'] = variables.get('breads_baked', 0) + 1
+            variables['production_value'] = variables.get('production_value', 0) + price
+            print(f"    -> Bakery baked {bread_type} (${price}) - Early morning production")
+            return variables
+        return bake_action
+    
+    bakery_sleeping = State("sleeping")  # Bakers not working
+    bakery_baking_rye = State("baking_rye", 
+                             action=scheduled_baking("Rye", 12),
+                             channel_op=SendOperation("bread_to_truck", "Truck", 
+                                                     {"type": "Rye", "price": 12}, "bread"))
+    bakery_baking_apple = State("baking_apple",
+                               action=scheduled_baking("Apple", 15), 
+                               channel_op=SendOperation("bread_to_truck", "Truck",
+                                                       {"type": "Apple", "price": 15}, "bread"))
+    bakery_done = State("done")  # Morning production complete
+    
+    # Bakery follows schedule - active in morning, rest of day off
+    bakery_sleeping.transitions = [(1.0, bakery_baking_rye)]  # Start with rye
+    bakery_baking_rye.transitions = [(0.5, bakery_baking_apple), (0.5, bakery_done)]
+    bakery_baking_apple.transitions = [(0.3, bakery_baking_rye), (0.7, bakery_done)]
+    bakery_done.transitions = [(1.0, bakery_sleeping)]  # Rest until next day
+    
+    # === TRUCK ACTOR ===
+    # Prioritizes morning deliveries
+    
+    def scheduled_loading(variables):
+        if 'bread' in variables:
+            bread = variables['bread']
+            variables['cargo'] = variables.get('cargo', [])
+            variables['cargo'].append(bread)
+            variables['loads_received'] = variables.get('loads_received', 0) + 1
+            print(f"    -> Truck loaded {bread['type']} bread (Morning rush)")
+        return variables
+    
+    def scheduled_delivery(variables):
+        cargo = variables.get('cargo', [])
+        if cargo:
+            bread = cargo.pop(0)
+            variables['deliveries_made'] = variables.get('deliveries_made', 0) + 1
+            variables['delivering_bread'] = bread
+            print(f"    -> Truck delivering {bread['type']} - PRE-OPENING delivery")
+            return variables
+        else:
+            variables['delivering_bread'] = {"type": "None", "price": 0}
+            return variables
+    
+    truck_waiting = State("waiting")
+    truck_loading = State("loading", 
+                         action=scheduled_loading,
+                         channel_op=ReceiveOperation("bread_to_truck", "bread"))
+    truck_delivering = State("delivering",
+                            action=scheduled_delivery,
+                            channel_op=SendOperation("bread_to_store", "Store", 
+                                                    "delivering_bread", "bread_delivery"))
+    truck_resting = State("resting")  # Post-delivery rest
+    
+    # Truck prioritizes morning delivery window
+    truck_waiting.transitions = [(0.8, truck_loading), (0.2, truck_waiting)]
+    truck_loading.transitions = [(0.6, truck_delivering), (0.4, truck_loading)]  # Quick to deliver in morning
+    truck_delivering.transitions = [(0.7, truck_loading), (0.3, truck_resting)]  # Multiple deliveries possible  
+    truck_resting.transitions = [(1.0, truck_waiting)]  # Back to work
+    
+    # === STORE ACTOR ===
+    # Opens only after receiving morning deliveries
+    
+    def pre_opening_stock(variables):
+        if 'bread_delivery' in variables:
+            bread = variables['bread_delivery']
+            if isinstance(bread, dict) and bread.get('type') != "None":
+                variables['inventory'] = variables.get('inventory', [])
+                variables['inventory'].append(bread)
+                variables['items_stocked'] = variables.get('items_stocked', 0) + 1
+                variables['ready_to_open'] = True
+                print(f"    -> Store stocked {bread['type']} - READY TO OPEN at 11 AM!")
+        return variables
+    
+    def serve_scheduled_customer(variables):
+        inventory = variables.get('inventory', [])
+        if 'customer_payment' in variables and inventory:
+            payment = variables['customer_payment']
+            sold_bread = inventory.pop(0)
+            variables['items_sold'] = variables.get('items_sold', 0) + 1
+            variables['revenue'] = variables.get('revenue', 0) + sold_bread['price']
+            print(f"    -> Store sold {sold_bread['type']} for ${sold_bread['price']} - Customer satisfied!")
+        elif 'customer_payment' in variables:
+            print(f"    -> Store has no bread - Customer disappointed (shouldn't happen with schedule!)")
+        return variables
+    
+    store_closed = State("closed")
+    store_pre_opening = State("pre_opening",
+                             action=pre_opening_stock,
+                             channel_op=ReceiveOperation("bread_to_store", "bread_delivery"))
+    store_open = State("open",
+                      action=serve_scheduled_customer,
+                      channel_op=ReceiveOperation("customer_orders", "customer_payment"))
+    store_closing = State("closing")
+    
+    # Store follows strict schedule
+    store_closed.transitions = [(1.0, store_pre_opening)]  # Get ready for deliveries
+    store_pre_opening.transitions = [(0.3, store_pre_opening), (0.7, store_open)]  # Open when ready
+    store_open.transitions = [(0.8, store_open), (0.2, store_closing)]  # Stay open most of day
+    store_closing.transitions = [(1.0, store_closed)]  # Close and reset
+    
+    # === CUSTOMER ACTOR ===
+    # Follows store schedule - only shops when store is open
+    
+    def scheduled_shopping(variables):
+        variables['purchases_attempted'] = variables.get('purchases_attempted', 0) + 1
+        payment = random.choice([10, 12, 15, 20])
+        variables['money_spent'] = variables.get('money_spent', 0) + payment
+        variables['current_payment'] = payment
+        print(f"    -> Customer shopping at open store with ${payment} - Proper timing!")
+        return variables
+    
+    customer_sleeping = State("sleeping")  # Before store opens
+    customer_shopping = State("shopping",
+                             action=scheduled_shopping,
+                             channel_op=SendOperation("customer_orders", "Store", 
+                                                     "current_payment", "customer_payment"))
+    customer_satisfied = State("satisfied")
+    
+    # Customer waits for store to open, then shops
+    customer_sleeping.transitions = [(0.8, customer_sleeping), (0.2, customer_shopping)]  # Wait for opening
+    customer_shopping.transitions = [(1.0, customer_satisfied)]
+    customer_satisfied.transitions = [(0.6, customer_sleeping), (0.4, customer_shopping)]  # Maybe shop again
+    
+    # === CREATE ACTORS ===
+    
+    schedule = Actor(
+        name="Schedule",
+        states=[schedule_night, schedule_morning, schedule_pre_open, schedule_open, schedule_afternoon, schedule_evening],
+        initial_state=schedule_night,
+        variables={'current_time': 'night', 'time_step': 0}
+    )
+    
+    bakery = Actor(
+        name="Bakery",
+        states=[bakery_sleeping, bakery_baking_rye, bakery_baking_apple, bakery_done],
+        initial_state=bakery_sleeping,
+        variables={'breads_baked': 0, 'production_value': 0}
+    )
+    
+    truck = Actor(
+        name="Truck",
+        states=[truck_waiting, truck_loading, truck_delivering, truck_resting],
+        initial_state=truck_waiting,
+        variables={'cargo': [], 'loads_received': 0, 'deliveries_made': 0}
+    )
+    
+    store = Actor(
+        name="Store", 
+        states=[store_closed, store_pre_opening, store_open, store_closing],
+        initial_state=store_closed,
+        variables={'inventory': [], 'items_stocked': 0, 'items_sold': 0, 'revenue': 0, 'ready_to_open': False}
+    )
+    
+    customer = Actor(
+        name="Customer",
+        states=[customer_sleeping, customer_shopping, customer_satisfied],
+        initial_state=customer_sleeping,
+        variables={'purchases_attempted': 0, 'money_spent': 0}
+    )
+    
+    # === ADD TO MODEL ===
+    
+    model.add_actor(schedule)  # Master coordinator
+    model.add_actor(bakery)
+    model.add_actor(truck)
+    model.add_actor(store)
+    model.add_actor(customer)
+    
+    # Same channels but now coordinated by schedule
+    model.add_channel(Channel("bread_to_truck", capacity=2))
+    model.add_channel(Channel("bread_to_store", capacity=3))
+    model.add_channel(Channel("customer_orders", capacity=3))
+    
+    return model
     """Model a bakery business process with Bakery -> Truck -> Store -> Customer flow."""
     
     model = Model()
@@ -871,14 +1086,14 @@ if __name__ == "__main__":
     sync_model.run(max_steps=15)
     print("```")
     
-    print("\n## Bakery Business Process Simulation")
+    print("\n## Scheduled Bakery Business Process")
     print("\n```")
-    bakery_model = create_bakery_business()
-    history = bakery_model.run(max_steps=25, stop_when_stable=False)
+    scheduled_model = create_scheduled_bakery_business()
+    history = scheduled_model.run(max_steps=25, stop_when_stable=False)
     print("```")
     
     print("\n## Business Metrics Analysis")
-    metrics = analyze_bakery_metrics(bakery_model, history)
+    metrics = analyze_bakery_metrics(scheduled_model, history)
     
     print(f"\n- **Production**: {metrics['production']['breads_baked']} breads baked, ${metrics['production']['production_value']} value")
     print(f"- **Logistics**: {metrics['logistics']['loads_received']} loads received, {metrics['logistics']['deliveries_made']} deliveries made")
@@ -900,7 +1115,7 @@ if __name__ == "__main__":
     print(f"- **Performance**: What's the optimal production rate? (Minimize waste while maximizing revenue)")
     
     # Generate diagrams
-    print_diagrams(bakery_model, history)
+    print_diagrams(scheduled_model, history)
     
     print(f"\n---")
     print(f"\n**Generated by Message Passing Markov Chain Framework**")
